@@ -12,6 +12,7 @@ from PIL import Image
 from torchvision.datasets import CIFAR10
 
 from backbone.ResNetBlock import resnet18
+from backbone.ResNetBlockLayerNorm import resnet18layernorm
 from datasets.seq_tinyimagenet import base_path
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
@@ -119,7 +120,7 @@ class SequentialCIFAR10(ContinualDataset):
 
     @staticmethod
     def get_backbone():
-        return resnet18(SequentialCIFAR10.N_CLASSES_PER_TASK
+        return resnet18layernorm(SequentialCIFAR10.N_CLASSES_PER_TASK
                         * SequentialCIFAR10.N_TASKS)
 
     @staticmethod

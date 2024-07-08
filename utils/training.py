@@ -305,7 +305,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                     if args.eval_epochs is not None and (epoch > 0 or args.eval_epochs == 1) and epoch % args.eval_epochs == 0 and epoch < model.args.n_epochs:
                         epoch_accs = evaluate(model, dataset)
 
+                        disable_log_state = args.disable_log
+                        args.disable_log = 1
                         log_accs(args, logger, epoch_accs, t, dataset.SETTING, epoch=epoch)
+                        args.disable_log = disable_log_state
 
             progress_bar.reset()
 

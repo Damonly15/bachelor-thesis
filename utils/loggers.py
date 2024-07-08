@@ -42,11 +42,16 @@ def log_accs(args, logger, accs, t, setting, epoch=None, prefix="RESULT"):
         logger.log_fullacc(accs)
 
     if not args.nowand:
-        postfix = "" if epoch is None else f"_epoch_{epoch}"
-        d2 = {f'{prefix}_class_mean_accs{postfix}': mean_acc[0], f'{prefix}_task_mean_accs{postfix}': mean_acc[1],
-              **{f'{prefix}_class_acc_{i}{postfix}': a for i, a in enumerate(accs[0])},
-              **{f'{prefix}_task_acc_{i}{postfix}': a for i, a in enumerate(accs[1])},
-              'Task': t}
+        postfix = "" #"" if epoch is None else f"_epoch_{epoch}"
+        if setting == 'domain-il' or setting == 'general-continual':
+            d2 = {f'{prefix}_domain_mean_accs{postfix}': mean_acc,
+                **{f'{prefix}_domain_acc_{i}{postfix}': a for i, a in enumerate(accs[0], start=1)},
+                'Task': t+1}
+        else:
+            d2 = {f'{prefix}_class_mean_accs{postfix}': mean_acc[0], f'{prefix}_task_mean_accs{postfix}': mean_acc[1],
+                **{f'{prefix}_class_acc_{i}{postfix}': a for i, a in enumerate(accs[0], start=1)},
+                **{f'{prefix}_task_acc_{i}{postfix}': a for i, a in enumerate(accs[1], start=1)},
+                'Task': t+1}
 
         wandb.log(d2)
 
@@ -261,11 +266,12 @@ class Logger:
             cpu_res: the CPU memory usage
             gpu_res: the GPU memory usage
         """
+        """
         if cpu_res is not None:
             self.cpu_res.append(cpu_res)
         if gpu_res is not None:
             self.gpu_res.append(gpu_res)
-
+        """
         if not self.args.nowand:
             wandb.log({'CPU_memory_usage': cpu_res, **{f'GPU_{i}_memory_usage': r for i, r in gpu_res.items()}})
 
@@ -285,11 +291,14 @@ class Logger:
             for j, acc in enumerate(fa):
                 wrargs['accuracy_' + str(j + 1) + '_task' + str(i + 1)] = acc
 
-        wrargs['cpu_memory_usage'] = self.cpu_res
-        wrargs['gpu_memory_usage'] = self.gpu_res
+        #wrargs['cpu_memory_usage'] = self.cpu_res
+        #wrargs['gpu_memory_usage'] = self.gpu_res
 
+        #self.fwt(self, self.fullaccs, self.accs, self.fullaccs_mask_classes, self.accs_mask_classes)
         wrargs['forward_transfer'] = self.fwt
+        self.add_bwt(self.fullaccs, self.fullaccs_mask_classes)
         wrargs['backward_transfer'] = self.bwt
+        self.add_forgetting(self.fullaccs, self.fullaccs_mask_classes)
         wrargs['forgetting'] = self.forgetting
 
         target_folder = base_path() + "results/"
@@ -301,7 +310,7 @@ class Logger:
                              "/" + self.dataset + "/" + self.model)
 
         path = target_folder + self.setting + "/" + self.dataset\
-            + "/" + self.model + "/logs.pyd"
+            + "/" + self.model + "/logs.txt"
         print("Logging results and arguments in " + path)
         with open(path, 'a') as f:
             f.write(str(wrargs) + '\n')
@@ -323,6 +332,6 @@ class Logger:
             wrargs['forgetting'] = self.forgetting_mask_classes
 
             path = target_folder + "task-il" + "/" + self.dataset + "/"\
-                + self.model + "/logs.pyd"
+                + self.model + "/logs.txt"
             with open(path, 'a') as f:
                 f.write(str(wrargs) + '\n')

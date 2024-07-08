@@ -12,7 +12,8 @@ if __name__ == '__main__':
     parser.add_argument('--skip_first', type=int, default=0, help='How many jobs to skip at the beginning from the \'file\'')
     parser.add_argument('--reverse', action='store_true', help='Reverse the order of the jobs')
     parser.add_argument('--name', type=str, default="mammoth", help='Name of the jobs in slurm')
-    parser.add_argument('--mem', type=int, default=32, help='Memory in GB')
+    parser.add_argument('--mem_per_cpu', type=int, default=16, help='Memory per CPU in GB')
+    parser.add_argument('--mem_scratch', type=int, default=0, help='Scratch memory in GB')
     parser.add_argument('--dry', action='store_true', help='Do not submit the job. Only creates the sbatch file')
     parser.add_argument('--gpus', type=int, default=1, help='How many gpus to use')
     parser.add_argument('--ddp', type=int, default=0, help='Use DistributedDataParallel. If 1, use torch.distributed.run', choices=[0, 1])
@@ -23,7 +24,7 @@ if __name__ == '__main__':
     parser.add_argument('--excludelist', type=str, default=None, help='Nodes to exclude from the job')
     parser.add_argument('--account', '-A', type=str, default=None, help='Slurm account')
     parser.add_argument('--partition', '-p', type=str, default=None, help='Slurm partition')
-    parser.add_argument('--cpus', type=int, default=8, help='How many cpus to use')
+    parser.add_argument('--cpus', type=int, default=1, help='How many cpus to use')
     parser.add_argument('--out', type=str, default='out', help='Output folder path')
     parser.add_argument('--err', type=str, default='err', help='Error folder path')
     parser.add_argument('--bashrc', type=str, default=None, help='Bashrc to source')
@@ -83,22 +84,23 @@ if __name__ == '__main__':
     exclusion = '' if args.excludelist is None else '#SBATCH --exclude=' + args.excludelist
     all_com_str = "".join([f"' {s} '\n" for s in all_com]).strip()
     filec = f"""#!/bin/bash
-{f"#SBATCH -p {args.partition}" if args.partition is not None else ""}
+
+#SBATCH -n 1
+#SBATCH -A es_ilic
 #SBATCH --job-name={args.name}
-{f"#SBATCH --nodes={args.nodes}"}
 #SBATCH --time={args.timelimit}
-{f"#SBATCH --mem={args.mem}G" if args.mem else ""}
+{f"#SBATCH --cpus-per-task={args.cpus}" if args.cpus is not None else ""}
+{f"#SBATCH --mem-per-cpu={args.mem_per_cpu}G" if args.mem_per_cpu else ""}
+{f"#SBATCH --tmp={args.mem_scratch}G" if args.mem_scratch else ""}
+#SBATCH --gpus={args.gpus}
+#SBATCH --gres=gpumem:10g
 #SBATCH --output="{os.path.join(outbase, args.name + r'_%A_%a.out')}"
 #SBATCH --error="{os.path.join(errbase, args.name + r'_%A_%a.out')}"
-{f"#SBATCH -A {args.account}" if args.account is not None else ""}
-#SBATCH --gres=gpu:{args.gpus}
-{f"#SBATCH --cpus-per-task={args.cpus}" if args.cpus is not None else ""}
+
 #SBATCH --array=0-{len_com-1}%{(len_com if args.at_a_time <= 0 else args.at_a_time)}
 {exclusion}
 
 {f"source {args.bashrc}" if args.bashrc is not None else ""}
-export WANDB__SERVICE_WAIT=300
-export OMP_NUM_THREADS=1
 # get random port
 export MASTER_PORT=$(( ((RANDOM<<15)|RANDOM) % 63001 + 2000 ))
 # get first node in slurm
