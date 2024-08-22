@@ -157,10 +157,15 @@ class ContinualDataset(object):
         raise NotImplementedError
 
     @staticmethod
-    def get_scheduler(model, args: Namespace) -> torch.optim.lr_scheduler._LRScheduler:
-        """Returns the scheduler to be used for the current dataset."""
+    def get_scheduler(model, args: Namespace, reload_optim=True) -> torch.optim.lr_scheduler._LRScheduler:
+        """
+        Returns the scheduler to be used for the current dataset.
+        If `reload_optim` is True, the optimizer is reloaded from the model. This should be done at least ONCE every task 
+        to ensure that the learning rate is reset to the initial value.
+        """
         if args.lr_scheduler is not None:
-            model.opt = model.get_optimizer()
+            if reload_optim or not hasattr(model, 'opt'):
+                model.opt = model.get_optimizer()
             # check if lr_scheduler is in torch.optim.lr_scheduler
             supported_scheds = {sched_name.lower(): sched_name for sched_name in dir(scheds) if sched_name.lower() in ContinualDataset.AVAIL_SCHEDS}
             sched = None
@@ -285,5 +290,7 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
 
     if setting.SETTING == 'task-il' or setting.SETTING == 'class-il':
         setting.i += setting.N_CLASSES_PER_TASK
+        setting.c_task += 1
+    if setting.SETTING == "domain-il":
         setting.c_task += 1
     return train_loader, test_loader

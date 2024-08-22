@@ -15,6 +15,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from backbone.ResNetBlock import resnet18
+from backbone.ResNetBlockLayerNorm import resnet18layernorm, resnet34layernorm
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_masked_loaders)
@@ -156,8 +157,8 @@ class SequentialTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_backbone():
-        return resnet18(SequentialTinyImagenet.N_CLASSES_PER_TASK
-                        * SequentialTinyImagenet.N_TASKS)
+        return resnet34layernorm(nclasses = SequentialTinyImagenet.N_CLASSES_PER_TASK
+                        * SequentialTinyImagenet.N_TASKS, inputs_size = SequentialTinyImagenet.SIZE[0])
 
     @staticmethod
     def get_loss():

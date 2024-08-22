@@ -10,9 +10,12 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
 from torchvision.datasets import CIFAR10
+import torch.nn as nn
+from torchvision.models import resnet50, ResNet50_Weights
 
 from backbone.ResNetBlock import resnet18
 from backbone.ResNetBlockLayerNorm import resnet18layernorm
+from backbone.ResNetBlockContinualNorm import resnet18continualnorm
 from datasets.seq_tinyimagenet import base_path
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
@@ -120,8 +123,15 @@ class SequentialCIFAR10(ContinualDataset):
 
     @staticmethod
     def get_backbone():
-        return resnet18layernorm(SequentialCIFAR10.N_CLASSES_PER_TASK
-                        * SequentialCIFAR10.N_TASKS)
+        resnet18 = resnet50(weights=ResNet50_Weights.DEFAULT)
+        num_features = resnet18.fc.in_features
+        resnet18.fc = nn.Linear(num_features, 10)
+        resnet18.train()
+        return resnet18
+        #return resnet18(SequentialCIFAR10.N_CLASSES_PER_TASK
+        #                * SequentialCIFAR10.N_TASKS)
+        #return resnet18layernorm(nclasses = SequentialCIFAR10.N_CLASSES_PER_TASK
+        #                * SequentialCIFAR10.N_TASKS, inputs_size = SequentialCIFAR10.SIZE[0])
 
     @staticmethod
     def get_loss():

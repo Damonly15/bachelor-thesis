@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 from torch.nn import functional as F
 
@@ -62,11 +63,17 @@ class DerPretrained(ContinualModel):
     def end_task(self, dataset):
         #load pretrained model
         if self.args.dataset == "seq-mnist":
-            pretrained_model = MNISTMLP(28*28, dataset.N_CLASSES_PER_TASK * dataset.N_TASKS)
+            pretrained_model = MNISTMLP(np.prod(dataset.SIZE), dataset.N_CLASSES)
             pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/seq_mnist_20epochs.pth"))
         elif self.args.dataset == "seq-cifar10":
-            pretrained_model = resnet18layernorm(dataset.N_CLASSES_PER_TASK * dataset.N_TASKS)
+            pretrained_model = resnet18layernorm(nclasses = dataset.N_CLASSES, inputs_size = dataset.SIZE[0])
             pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/seq_cifar10_100epochs.pth"))
+        elif self.args.dataset == "perm-mnist":
+            pretrained_model = MNISTMLP(np.prod(dataset.SIZE), dataset.N_CLASSES)
+            pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/perm_mnist_12epochs.pth"))
+        elif self.args.dataset == "seq-tinyimg":
+            pretrained_model = resnet18layernorm(nclasses = dataset.N_CLASSES, inputs_size = dataset.SIZE[0])
+            pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/seq_tinyimg_150epochs.pth"))           
         pretrained_model.to(self.device)
 
         with torch.no_grad():

@@ -36,6 +36,11 @@ class DerTempbounds(ContinualModel):
         loss.backward()
         tot_loss += loss.item()
 
+        _, pred = torch.max(outputs.detach()[:, :self.n_seen_classes].data, 1)
+        correct = torch.sum(pred == labels).item()
+        total = labels.shape[0]
+        _wandb_train_acc = correct / total * 100
+
         if not self.buffer.is_empty():
             buf_inputs, buf_logits, _ = self.buffer.get_data(
                 self.args.minibatch_size, transform=self.transform, device=self.device)
@@ -103,3 +108,4 @@ class DerTempbounds(ContinualModel):
                     counter += self.args.batch_size
                     if examples_per_task - counter <= 0:
                         break
+        

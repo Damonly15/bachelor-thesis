@@ -10,15 +10,17 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'seq_cifar10_tests',
+        'name':'seq_mnist_tests',
         'combos': {
-            "dataset": ["seq-cifar10"],
-            "model": ["der_tempbounds", "der_pretrained"],
-            "buffer_size": [100, 150, 350, 650, 1400, 1700],
-            "lr": [0.01], 
+            "dataset": ['seq-mnist'],
+            "model": ["der_labelsmoothing"],
+            "buffer_size": [200],
+            "lr": [0.01],
             "alpha": [0.03, 0.1],
             "temperature": [20],
-            "seed": [1000, 2000, 3000]
+            "seed": [1000, 2000, 3000],
+            "enable_other_metrics" : [1],
+            "log_feature_forgetting": [1]
         },
     },
 ]

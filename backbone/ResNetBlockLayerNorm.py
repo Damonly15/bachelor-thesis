@@ -85,7 +85,7 @@ class ResNetLayerNorm(MammothBackbone):
     """
 
     def __init__(self, block: BasicBlockLayerNorm, num_blocks: List[int],
-                 num_classes: int, nf: int) -> None:
+                 num_classes: int, nf: int, inputs_size: int) -> None:
         """
         Instantiates the layers of the network.
 
@@ -103,11 +103,11 @@ class ResNetLayerNorm(MammothBackbone):
         self.num_classes = num_classes
         self.nf = nf
         self.conv1 = conv3x3(3, nf * 1)
-        self.bn1 = nn.LayerNorm([nf * 1, 32, 32])
-        self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], layersize=32, stride=1)
-        self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], layersize=16, stride=2)
-        self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], layersize=8, stride=2)
-        self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], layersize=4, stride=2)
+        self.bn1 = nn.LayerNorm([nf * 1, inputs_size, inputs_size])
+        self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], layersize=inputs_size, stride=1)
+        self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], layersize=(inputs_size // 2), stride=2)
+        self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], layersize=(inputs_size // 4), stride=2)
+        self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], layersize=(inputs_size // 8), stride=2)
         self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes)
 
         self.feature_dim = nf * 8 * block.expansion
@@ -190,7 +190,7 @@ class ResNetLayerNorm(MammothBackbone):
         raise NotImplementedError("Unknown return type. Must be in ['out', 'features', 'both', 'full'] but got {}".format(returnt))
 
 
-def resnet18layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
+def resnet18layernorm(nclasses: int, nf: int = 64, inputs_size: int = 32) -> ResNetLayerNorm:
     """
     Instantiates a ResNet18 network.
 
@@ -201,10 +201,10 @@ def resnet18layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
     Returns:
         ResNet network
     """
-    return ResNetLayerNorm(BasicBlockLayerNorm, [2, 2, 2, 2], nclasses, nf)
+    return ResNetLayerNorm(BasicBlockLayerNorm, [2, 2, 2, 2], nclasses, nf, inputs_size)
 
 
-def resnet34layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
+def resnet34layernorm(nclasses: int, nf: int = 64, inputs_size: int = 32) -> ResNetLayerNorm:
     """
     Instantiates a ResNet34 network.
 
@@ -215,4 +215,4 @@ def resnet34layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
     Returns:
         ResNet network
     """
-    return ResNetLayerNorm(BasicBlockLayerNorm, [3, 4, 6, 3], nclasses, nf)
+    return ResNetLayerNorm(BasicBlockLayerNorm, [3, 4, 6, 3], nclasses, nf, inputs_size)

@@ -63,3 +63,5 @@ def forgetting(results):
         li.append(maxx[i] - results[-1][i])
 
     return np.mean(li)
+
+

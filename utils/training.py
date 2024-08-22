@@ -8,6 +8,7 @@ import math
 import sys
 from argparse import Namespace
 from typing import Iterable, Tuple
+import copy
 
 import torch
 from datasets import get_dataset
@@ -20,6 +21,7 @@ from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.stats import track_system_stats
 from utils.status import ProgressBar
+from utils.feature_forgetting import evaluate_feature_forgetting
 import time
 
 try:
@@ -208,12 +210,16 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
     if not args.disable_log:
         logger = Logger(args, dataset.SETTING, dataset.NAME, model.NAME)
+    
+    if args.log_feature_forgetting:
+        logger_feature_forgetting = Logger(args, dataset.SETTING, dataset.NAME + "_feature_forgetting", model.NAME)
 
     model.net.to(model.device)
     torch.cuda.empty_cache()
 
     with track_system_stats(logger) as system_tracker:
         results, results_mask_classes = [], []
+        results_feature_forgetting, results_mask_classes_feature_forgetting = [], []
 
         if args.start_from is not None:
             for i in range(args.start_from):
@@ -257,7 +263,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                     if dataset.SETTING == 'class-il':
                         results_mask_classes[t - 1] = results_mask_classes[t - 1] + accs[1]
 
-                scheduler = dataset.get_scheduler(model, args) if not hasattr(model, 'scheduler') else model.scheduler
+                scheduler = dataset.get_scheduler(model, args, reload_optim=True) if not hasattr(model, 'scheduler') else model.scheduler
 
                 epoch = 0
                 best_ea_metric = None
@@ -320,6 +326,13 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
             log_accs(args, logger, accs, t, dataset.SETTING)
 
+            if args.log_feature_forgetting:
+                accs_feature_forgetting = evaluate_feature_forgetting(model, dataset)
+                results_feature_forgetting.append(accs_feature_forgetting[0])
+                results_mask_classes_feature_forgetting.append(accs_feature_forgetting[1])
+
+                log_accs(args, logger_feature_forgetting, accs_feature_forgetting, t, dataset.SETTING)
+
             if args.savecheck:
                 save_obj = {
                     'model': model.state_dict(),
@@ -358,6 +371,17 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                 logger.add_fwt(results, random_results_class,
                                results_mask_classes, random_results_task)
 
+        if args.log_feature_forgetting and args.enable_other_metrics:
+            #create a deepcopy of the lists
+            #somehow callingevaluate in a different module seems to return a reference, while calling evaluate here returns an array on the stack
+            results_feature_forgetting = copy.deepcopy(results_feature_forgetting)
+            results_mask_classes_feature_forgetting = copy.deepcopy(results_mask_classes_feature_forgetting)
+            logger_feature_forgetting.add_bwt(results_feature_forgetting, results_mask_classes_feature_forgetting)
+            logger_feature_forgetting.add_forgetting(results_feature_forgetting, results_mask_classes_feature_forgetting)
+            if model.NAME != 'icarl' and model.NAME != 'pnn':
+                logger_feature_forgetting.add_fwt(results_feature_forgetting, random_results_class,
+                                                  results_mask_classes_feature_forgetting, random_results_task)
+
         system_tracker.print_stats()
 
     if not args.disable_log:
@@ -366,6 +390,9 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             d = logger.dump()
             d['wandb_url'] = wandb.run.get_url()
             wandb.log(d)
+
+    if args.log_feature_forgetting:
+        logger_feature_forgetting.write(vars(args))
 
     if not args.nowand:
         wandb.finish()

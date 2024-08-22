@@ -10,6 +10,7 @@ This module contains the Logger class and related functions for logging accuracy
 from contextlib import suppress
 import sys
 from typing import Any, Dict
+import copy
 
 import numpy as np
 
@@ -216,7 +217,8 @@ class Logger:
             results_mask_classes: The results for masked classes.
         """
         self.bwt = backward_transfer(results)
-        self.bwt_mask_classes = backward_transfer(results_mask_classes)
+        if self.setting == 'class-il':
+            self.bwt_mask_classes = backward_transfer(results_mask_classes)
 
     def add_forgetting(self, results, results_mask_classes):
         """
@@ -227,7 +229,8 @@ class Logger:
             results_mask_classes: The results for masked classes.
         """
         self.forgetting = forgetting(results)
-        self.forgetting_mask_classes = forgetting(results_mask_classes)
+        if self.setting == 'class-il':
+            self.forgetting_mask_classes = forgetting(results_mask_classes)
 
     def log(self, mean_acc: np.ndarray) -> None:
         """
@@ -256,6 +259,8 @@ class Logger:
             acc_class_il, acc_task_il = accs
             self.fullaccs.append(acc_class_il)
             self.fullaccs_mask_classes.append(acc_task_il)
+        elif self.setting == 'domain-il':
+            self.fullaccs.append(accs[0])
 
     def log_system_stats(self, cpu_res, gpu_res):
         """
@@ -272,8 +277,10 @@ class Logger:
         if gpu_res is not None:
             self.gpu_res.append(gpu_res)
         """
+        """
         if not self.args.nowand:
             wandb.log({'CPU_memory_usage': cpu_res, **{f'GPU_{i}_memory_usage': r for i, r in gpu_res.items()}})
+        """
 
     def write(self, args: Dict[str, Any]) -> None:
         """
@@ -293,12 +300,24 @@ class Logger:
 
         #wrargs['cpu_memory_usage'] = self.cpu_res
         #wrargs['gpu_memory_usage'] = self.gpu_res
-
-        #self.fwt(self, self.fullaccs, self.accs, self.fullaccs_mask_classes, self.accs_mask_classes)
+        """
+        if self.setting == 'domain-il' or self.setting == 'general-continual':
+            #self.fwt(self, self.fullaccs, self.accs, self.fullaccs_mask_classes, self.accs_mask_classes)
+            wrargs['forward_transfer'] = self.fwt      
+            self.add_bwt(self.fullaccs, None)
+            wrargs['backward_transfer'] = self.bwt
+            self.add_forgetting(self.fullaccs, None)
+            wrargs['forgetting'] = self.forgetting
+        else:  
+            #self.fwt(self, self.fullaccs, self.accs, self.fullaccs_mask_classes, self.accs_mask_classes)
+            wrargs['forward_transfer'] = self.fwt      
+            self.add_bwt(self.fullaccs, self.fullaccs_mask_classes)
+            wrargs['backward_transfer'] = self.bwt
+            self.add_forgetting(self.fullaccs, self.fullaccs_mask_classes)
+            wrargs['forgetting'] = self.forgetting
+        """
         wrargs['forward_transfer'] = self.fwt
-        self.add_bwt(self.fullaccs, self.fullaccs_mask_classes)
         wrargs['backward_transfer'] = self.bwt
-        self.add_forgetting(self.fullaccs, self.fullaccs_mask_classes)
         wrargs['forgetting'] = self.forgetting
 
         target_folder = base_path() + "results/"

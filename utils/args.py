@@ -104,7 +104,7 @@ def add_management_args(parser: ArgumentParser) -> None:
                            help='Helper argument to include notes for this run. Example: distinguish between different versions of a model and allow separation of results')
     mng_group.add_argument('--eval_epochs', type=int, default=None,
                            help='Perform inference on validation every `eval_epochs` epochs. If not provided, the model is evaluated ONLY at the end of each task.')
-    mng_group.add_argument('--non_verbose', default=0, choices=[0, 1], type=int, help='Make progress bars non verbose')
+    mng_group.add_argument('--non_verbose', default=1, choices=[0, 1], type=int, help='Make progress bars non verbose')
     mng_group.add_argument('--disable_log', default=0, choices=[0, 1], type=int, help='Disable logging?')
     mng_group.add_argument('--num_workers', type=int, default=None, help='Number of workers for the dataloaders (default=infer from number of cpus).')
     mng_group.add_argument('--enable_other_metrics', default=0, choices=[0, 1], type=int,
@@ -131,6 +131,8 @@ def add_management_args(parser: ArgumentParser) -> None:
                              help='Wandb name for this run. Overrides the default name (`args.model`).')
     wandb_group.add_argument('--wandb_entity', type=str, help='Wandb entity')
     wandb_group.add_argument('--wandb_project', type=str, default='mammoth', help='Wandb project name')
+    
+    mng_group.add_argument('--log_feature_forgetting', default=0, choices=[0, 1], type=int, help='Log feature forgetting values')
 
 
 def add_rehearsal_args(parser: ArgumentParser) -> None:

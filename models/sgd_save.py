@@ -14,7 +14,6 @@ mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser
 
-
 class SgdSave(ContinualModel):
     """
     Implementation of the Sgd model for continual learning.
@@ -41,6 +40,11 @@ class SgdSave(ContinualModel):
         loss.backward()
         self.opt.step()
 
+        _, pred = torch.max(outputs.detach()[:, :self.n_seen_classes].data, 1)
+        correct = torch.sum(pred == labels).item()
+        total = labels.shape[0]
+        _wandb_train_acc = correct / total * 100
+
         return loss.item()
 
     def end_task(self, dataset):
@@ -48,4 +52,4 @@ class SgdSave(ContinualModel):
         if not os.path.exists(mammoth_path + f"/pretrained_models"):
             os.makedirs(mammoth_path + f"/pretrained_models")
         
-        torch.save(self.net.state_dict(), mammoth_path + f"/pretrained_models/seq_cifar10_100epochs.pth")
+        torch.save(self.net.state_dict(), mammoth_path + f"/pretrained_models/tiny_img_150epochs.pth")
