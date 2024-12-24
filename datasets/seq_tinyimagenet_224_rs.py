@@ -16,7 +16,7 @@ from torch.utils.data import Dataset
 
 from backbone.ResNetBlock import resnet18
 from backbone.ResNetBlockLayerNorm import resnet18layernorm, resnet34layernorm
-from backbone.CNN import CnnLN, CnnBN
+from backbone.ResNetBottleneck import resnet50, resnet50layernorm
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_masked_loaders)
@@ -114,7 +114,7 @@ class MyTinyImagenet(TinyImagenet):
         return img, target, not_aug_img
 
 
-class SequentialTinyImagenet(ContinualDataset):
+class SequentialTinyImagenet224RS(ContinualDataset):
     """The Sequential Tiny Imagenet dataset.
 
     Args:
@@ -129,7 +129,7 @@ class SequentialTinyImagenet(ContinualDataset):
         TRANSFORM (torchvision.transforms): transformations to apply to the dataset.
     """
 
-    NAME = 'seq-tinyimg'
+    NAME = 'seq-tinyimg-224-rs'
     SETTING = 'class-il'
     N_CLASSES_PER_TASK = 20
     N_TASKS = 10
@@ -137,7 +137,8 @@ class SequentialTinyImagenet(ContinualDataset):
     MEAN, STD = (0.4802, 0.4480, 0.3975), (0.2770, 0.2691, 0.2821)
     SIZE = (64, 64)
     TRANSFORM = transforms.Compose(
-        [transforms.RandomCrop(64, padding=4),
+        [transforms.Resize(224),
+         transforms.RandomCrop(224, padding=28),
          transforms.RandomHorizontalFlip(),
          transforms.ToTensor(),
          transforms.Normalize(MEAN, STD)])
@@ -146,7 +147,7 @@ class SequentialTinyImagenet(ContinualDataset):
         transform = self.TRANSFORM
 
         test_transform = transforms.Compose(
-            [transforms.ToTensor(), self.get_normalization_transform()])
+            [transforms.Resize(224), transforms.ToTensor(), self.get_normalization_transform()])
 
         train_dataset = MyTinyImagenet(base_path() + 'TINYIMG',
                                        train=True, download=True, transform=transform)
@@ -157,30 +158,10 @@ class SequentialTinyImagenet(ContinualDataset):
         return train, test
 
     @staticmethod
-    def get_backbone(version):
-        num_classes = SequentialTinyImagenet.N_CLASSES_PER_TASK * SequentialTinyImagenet.N_TASKS
-        if version == "0":
-            return resnet18layernorm(nclasses = num_classes)
-        elif version == '1':
-            return CnnLN(16, num_classes)
-        elif version == '2':
-            return CnnLN(32, num_classes)
-        elif version == '3':
-            return CnnLN(64, num_classes)
-        elif version == '4':
-            return CnnLN(112, num_classes)
-        elif version == '5':
-            return CnnLN(176, num_classes)
-        elif version == '6':
-            return CnnLN(240, num_classes)
-        elif version == '7':
-            return CnnLN(368, num_classes)
-        elif version == '8':
-            return CnnLN(512, num_classes)
-        elif version == '10':
-            return resnet18(num_classes)
-        elif version == '15':
-            return CnnBN(176, num_classes)
+    def get_backbone():
+        return resnet50layernorm(SequentialTinyImagenet224RS.N_CLASSES_PER_TASK
+                        * SequentialTinyImagenet224RS.N_TASKS)
+        #return resnet18(SequentialTinyImagenet.N_CLASSES_PER_TASK * SequentialTinyImagenet.N_TASKS)
 
     @staticmethod
     def get_loss():
@@ -193,12 +174,12 @@ class SequentialTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_normalization_transform():
-        transform = transforms.Normalize(SequentialTinyImagenet.MEAN, SequentialTinyImagenet.STD)
+        transform = transforms.Normalize(SequentialTinyImagenet224RS.MEAN, SequentialTinyImagenet224RS.STD)
         return transform
 
     @staticmethod
     def get_denormalization_transform():
-        transform = DeNormalize(SequentialTinyImagenet.MEAN, SequentialTinyImagenet.STD)
+        transform = DeNormalize(SequentialTinyImagenet224RS.MEAN, SequentialTinyImagenet224RS.STD)
         return transform
 
     @set_default_from_args('n_epochs')

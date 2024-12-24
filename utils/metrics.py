@@ -3,8 +3,18 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
 import numpy as np
+import torch
 
+mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+from backbone.MNISTMLP import MNISTMLP
+from datasets.seq_mnist import SequentialMNIST
+from datasets.perm_mnist import PermutedMNIST
+from backbone.ResNetBlockLayerNorm import resnet18layernorm
+from datasets.seq_cifar10 import SequentialCIFAR10
+from datasets.seq_tinyimagenet import SequentialTinyImagenet
 
 def backward_transfer(results):
     """
@@ -63,5 +73,4 @@ def forgetting(results):
         li.append(maxx[i] - results[-1][i])
 
     return np.mean(li)
-
 

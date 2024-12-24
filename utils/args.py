@@ -31,12 +31,16 @@ def add_experiment_args(parser: ArgumentParser) -> None:
     exp_group.add_argument('--dataset', type=str, required=True,
                            choices=get_dataset_names(),
                            help='Which dataset to perform experiments on.')
+    exp_group.add_argument('--training_setting', type=str, required=False, default="class-il",
+                           choices=["class-il", "task-il"],
+                           help='Use class or task incremental training. Please use class-il for domain-il setting')
     exp_group.add_argument('--model', type=custom_str_underscore, required=True,
                            help='Model name.', choices=list(get_all_models().keys()))
     exp_group.add_argument('--lr', type=float, required=True, help='Learning rate.')
     exp_group.add_argument('--batch_size', type=int, help='Batch size.')
     exp_group.add_argument('--label_perc', type=float, default=1, help='Percentage in (0-1] of labeled examples per task.')
     exp_group.add_argument('--joint', type=int, choices=[0, 1], default=0, help='Train model on Joint (single task)?')
+    exp_group.add_argument('--chunks', type=int, help='Number of chunks for chunking dataset')
 
     validation_group = parser.add_argument_group('Validation and fitting arguments', 'Arguments used to define the validation strategy and the method used to fit the model.')
 
@@ -79,7 +83,9 @@ def add_experiment_args(parser: ArgumentParser) -> None:
     opt_group.add_argument('--lr_milestones', type=int, nargs='+', default=[],
                            help='Learning rate scheduler milestones (used if `lr_scheduler=multisteplr`).')
     opt_group.add_argument('--sched_multistep_lr_gamma', type=float, default=0.1,
-                           help='Learning rate scheduler gamma (used if `lr_scheduler=multisteplr`).')
+                           help='Learning rate scheduler gamma (used if `lr_scheduler=multisteplr`).')  
+    opt_group.add_argument('--backbone', type=str, default="0", choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "10", "15"], required=False,
+                           help='Use a different backbone for scaling.')
 
 
 def add_management_args(parser: ArgumentParser) -> None:
@@ -132,7 +138,8 @@ def add_management_args(parser: ArgumentParser) -> None:
     wandb_group.add_argument('--wandb_entity', type=str, help='Wandb entity')
     wandb_group.add_argument('--wandb_project', type=str, default='mammoth', help='Wandb project name')
     
-    mng_group.add_argument('--log_feature_forgetting', default=0, choices=[0, 1], type=int, help='Log feature forgetting values')
+    mng_group.add_argument('--log_feature_forgetting', type=str, default="output", choices=["output", "features", "all", "testing"], required=False,
+                            help='Which feature forgetting version to log')
 
 
 def add_rehearsal_args(parser: ArgumentParser) -> None:

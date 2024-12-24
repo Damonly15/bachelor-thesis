@@ -185,7 +185,7 @@ def main(args=None):
         if args.validation_mode == 'current':
             assert dataset.SETTING in ['class-il', 'task-il'], "`current` validation modes is only supported for class-il and task-il settings (requires a task division)."
 
-    backbone = dataset.get_backbone()
+    backbone = dataset.get_backbone(args.backbone)
     if args.code_optimization == 3:
         # check if the model is compatible with torch.compile
         # from https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html
@@ -234,6 +234,9 @@ def main(args=None):
         setproctitle.setproctitle('{}_{}_{}'.format(args.model, args.buffer_size if 'buffer_size' in args else 0, args.dataset))
     except Exception:
         pass
+
+    if dataset.SETTING == "domain-il" and args.training_setting == "task-il":
+         raise Exception("Task-IL training method is not compatible with a Domain-IL dataset. Please use Class-IL training with a Domain-IL dataset")
 
     train(model, dataset, args)
 

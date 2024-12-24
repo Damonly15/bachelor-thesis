@@ -29,13 +29,13 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> F.conv2d:
                      padding=1, bias=False)
 
 
-class BasicBlockLayerNorm(nn.Module):
+class BasicBlock(nn.Module):
     """
     The basic block of ResNet.
     """
     expansion = 1
 
-    def __init__(self, in_planes: int, planes: int, layersize: int, stride: int = 1) -> None:
+    def __init__(self, in_planes: int, planes: int, stride: int = 1) -> None:
         """
         Instantiates the basic block of the network.
 
@@ -43,19 +43,19 @@ class BasicBlockLayerNorm(nn.Module):
             in_planes: the number of input channels
             planes: the number of channels (to be possibly expanded)
         """
-        super(BasicBlockLayerNorm, self).__init__()
+        super(BasicBlock, self).__init__()
         self.return_prerelu = False
         self.conv1 = conv3x3(in_planes, planes, stride)
-        self.bn1 = nn.LayerNorm([planes, layersize, layersize])
+        self.bn1 = CustomGroupNorm(planes)
         self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.LayerNorm([planes, layersize, layersize])
+        self.bn2 = CustomGroupNorm(planes)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1,
                           stride=stride, bias=False),
-                nn.LayerNorm([self.expansion * planes, layersize, layersize])
+                CustomGroupNorm(self.expansion * planes)
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -84,8 +84,8 @@ class ResNetLayerNorm(MammothBackbone):
     ResNet network architecture. Designed for complex datasets.
     """
 
-    def __init__(self, block: BasicBlockLayerNorm, num_blocks: List[int],
-                 num_classes: int, nf: int, inputs_size: int) -> None:
+    def __init__(self, block: BasicBlock, num_blocks: List[int],
+                 num_classes: int, nf: int) -> None:
         """
         Instantiates the layers of the network.
 
@@ -103,11 +103,11 @@ class ResNetLayerNorm(MammothBackbone):
         self.num_classes = num_classes
         self.nf = nf
         self.conv1 = conv3x3(3, nf * 1)
-        self.bn1 = nn.LayerNorm([nf * 1, inputs_size, inputs_size])
-        self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], layersize=inputs_size, stride=1)
-        self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], layersize=(inputs_size // 2), stride=2)
-        self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], layersize=(inputs_size // 4), stride=2)
-        self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], layersize=(inputs_size // 8), stride=2)
+        self.bn1 = CustomGroupNorm(nf * 1)
+        self.layer1 = self._make_layer(block, nf * 1, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
         self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes)
 
         self.feature_dim = nf * 8 * block.expansion
@@ -122,8 +122,8 @@ class ResNetLayerNorm(MammothBackbone):
             if isinstance(c, self.block):
                 c.return_prerelu = enable
 
-    def _make_layer(self, block: BasicBlockLayerNorm, planes: int,
-                    num_blocks: int, layersize: int, stride: int) -> nn.Module:
+    def _make_layer(self, block: BasicBlock, planes: int,
+                    num_blocks: int, stride: int) -> nn.Module:
         """
         Instantiates a ResNet layer.
 
@@ -139,7 +139,7 @@ class ResNetLayerNorm(MammothBackbone):
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
-            layers.append(block(self.in_planes, planes, layersize, stride))
+            layers.append(block(self.in_planes, planes, stride))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -190,7 +190,7 @@ class ResNetLayerNorm(MammothBackbone):
         raise NotImplementedError("Unknown return type. Must be in ['out', 'features', 'both', 'full'] but got {}".format(returnt))
 
 
-def resnet18layernorm(nclasses: int, nf: int = 64, inputs_size: int = 32) -> ResNetLayerNorm:
+def resnet18layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
     """
     Instantiates a ResNet18 network.
 
@@ -201,10 +201,10 @@ def resnet18layernorm(nclasses: int, nf: int = 64, inputs_size: int = 32) -> Res
     Returns:
         ResNet network
     """
-    return ResNetLayerNorm(BasicBlockLayerNorm, [2, 2, 2, 2], nclasses, nf, inputs_size)
+    return ResNetLayerNorm(BasicBlock, [2, 2, 2, 2], nclasses, nf)
 
 
-def resnet34layernorm(nclasses: int, nf: int = 64, inputs_size: int = 32) -> ResNetLayerNorm:
+def resnet34layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
     """
     Instantiates a ResNet34 network.
 
@@ -215,4 +215,9 @@ def resnet34layernorm(nclasses: int, nf: int = 64, inputs_size: int = 32) -> Res
     Returns:
         ResNet network
     """
-    return ResNetLayerNorm(BasicBlockLayerNorm, [3, 4, 6, 3], nclasses, nf, inputs_size)
+    return ResNetLayerNorm(BasicBlock, [3, 4, 6, 3], nclasses, nf)
+
+class CustomGroupNorm(nn.GroupNorm):
+    def __init__(self, num_channels):
+        # Initialize with num_groups = 1 (in that case group norm is equvalent to layer norm) and provided num_channels
+        super(CustomGroupNorm, self).__init__(num_groups=1, num_channels=num_channels)

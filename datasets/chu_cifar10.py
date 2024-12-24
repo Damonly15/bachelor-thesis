@@ -3,6 +3,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+from argparse import Namespace
 from typing import Tuple
 
 import torch
@@ -10,15 +11,16 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
 from torchvision.datasets import CIFAR10
+import numpy as np
+import copy
 
 from backbone.ResNetBlock import resnet18
-from backbone.ResNetBlockLayerNorm import resnet18layernorm, resnet34layernorm
-from backbone.ResNetBlockContinualNorm import resnet18continualnorm
+from backbone.ResNetBlockLayerNorm import resnet18layernorm
 from backbone.CNN import CnnLN, CnnBN
 from datasets.seq_tinyimagenet import base_path
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
-                                              store_masked_loaders)
+                                              store_chunking_loaders_random, store_chunking_loaders_classes)
 from datasets.utils import set_default_from_args
 
 
@@ -72,7 +74,7 @@ class MyCIFAR10(CIFAR10):
         return img, target, not_aug_img
 
 
-class SequentialCIFAR10(ContinualDataset):
+class ChunkingCIFAR10(ContinualDataset):
     """Sequential CIFAR10 Dataset.
 
     Args:
@@ -87,7 +89,7 @@ class SequentialCIFAR10(ContinualDataset):
         TRANSFORM (torchvision.transforms): transformations to apply to the dataset.
     """
 
-    NAME = 'seq-cifar10'
+    NAME = 'chu-cifar10'
     SETTING = 'class-il'
     N_CLASSES_PER_TASK = 2
     N_TASKS = 5
@@ -102,27 +104,41 @@ class SequentialCIFAR10(ContinualDataset):
 
     TEST_TRANSFORM = transforms.Compose([transforms.ToTensor(), transforms.Normalize(MEAN, STD)])
 
+    train_dataset = MyCIFAR10(base_path() + 'CIFAR10', train=True,
+                                download=True, transform=TRANSFORM)
+
+
+    def __init__(self, args: Namespace) -> None:
+        super(ChunkingCIFAR10, self).__init__(args)
+        self.N_TASKS = args.chunks
+        self.N_CLASSES_PER_TASK = self.N_CLASSES
+
+        if not isinstance(self.train_dataset.targets, np.ndarray):
+            self.train_dataset.targets = np.array(self.train_dataset.targets)
+        #randomly permute dataset
+        permutation = np.random.permutation(len(self.train_dataset.data))
+        self.train_dataset.data = self.train_dataset.data[permutation]
+        self.train_dataset.targets = self.train_dataset.targets[permutation]
+
     def get_data_loaders(self) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
         """Class method that returns the train and test loaders."""
-        transform = self.TRANSFORM
 
-        train_dataset = MyCIFAR10(base_path() + 'CIFAR10', train=True,
-                                  download=True, transform=transform)
         test_dataset = TCIFAR10(base_path() + 'CIFAR10', train=False,
                                 download=True, transform=self.TEST_TRANSFORM)
-
-        train, test = store_masked_loaders(train_dataset, test_dataset, self)
+        
+        train, test = store_chunking_loaders_random(copy.deepcopy(self.train_dataset), test_dataset, self) #distributing chunks randomly
+        #train, test = store_chunking_loaders_classes(copy.deepcopy(self.train_dataset), self.test_dataset, self) #distribute chunks according to classes
         return train, test
 
     @staticmethod
     def get_transform():
         transform = transforms.Compose(
-            [transforms.ToPILImage(), SequentialCIFAR10.TRANSFORM])
+            [transforms.ToPILImage(), ChunkingCIFAR10.TRANSFORM])
         return transform
 
     @staticmethod
     def get_backbone(version):
-        num_classes = SequentialCIFAR10.N_CLASSES_PER_TASK * SequentialCIFAR10.N_TASKS
+        num_classes = ChunkingCIFAR10.N_CLASSES_PER_TASK * ChunkingCIFAR10.N_TASKS
         if version == "0":
             return resnet18layernorm(nclasses = num_classes)
         elif version == '1':
@@ -152,12 +168,12 @@ class SequentialCIFAR10(ContinualDataset):
 
     @staticmethod
     def get_normalization_transform():
-        transform = transforms.Normalize(SequentialCIFAR10.MEAN, SequentialCIFAR10.STD)
+        transform = transforms.Normalize(ChunkingCIFAR10.MEAN, ChunkingCIFAR10.STD)
         return transform
 
     @staticmethod
     def get_denormalization_transform():
-        transform = DeNormalize(SequentialCIFAR10.MEAN, SequentialCIFAR10.STD)
+        transform = DeNormalize(ChunkingCIFAR10.MEAN, ChunkingCIFAR10.STD)
         return transform
 
     @set_default_from_args('n_epochs')

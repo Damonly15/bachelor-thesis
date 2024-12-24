@@ -12,6 +12,7 @@ import numpy as np
 import torch.nn as nn
 import torch.optim.lr_scheduler as scheds
 from torch.utils.data import DataLoader, Dataset
+from collections import defaultdict
 
 from datasets.utils.validation import get_validation_indexes
 from utils.conf import create_seeded_dataloader
@@ -79,7 +80,7 @@ class ContinualDataset(object):
             self.N_TASKS = 1
 
         if not all((self.NAME, self.SETTING, self.N_CLASSES_PER_TASK, self.N_TASKS, self.SIZE, self.N_CLASSES)):
-            raise NotImplementedError('The dataset must be initialized with all the required fields.')
+            raise NotImplementedError('The dataset must be initialized with all the required fields.')     
 
     def update_default_args(self):
         """
@@ -293,4 +294,92 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
         setting.c_task += 1
     if setting.SETTING == "domain-il":
         setting.c_task += 1
+    return train_loader, test_loader
+
+def store_chunking_loaders_classes(train_dataset: Dataset, test_dataset: Dataset,
+                         setting: ContinualDataset) -> Tuple[DataLoader, DataLoader]:
+    """
+    Divides the dataset into chunks according to classes.
+
+    Attributes:
+        train_dataset (Dataset): the training dataset
+        test_dataset (Dataset): the test dataset
+        setting (ContinualDataset): the setting of the dataset
+
+    Returns:
+        the training and test loaders
+    """
+    if not isinstance(train_dataset.targets, np.ndarray):
+        train_dataset.targets = np.array(train_dataset.targets)
+    if not isinstance(test_dataset.targets, np.ndarray):
+        test_dataset.targets = np.array(test_dataset.targets)
+
+    # Get unique classes and indices for each class
+    classes = np.unique(train_dataset.targets)
+    class_indices = {cls: np.where(train_dataset.targets == cls)[0] for cls in classes}
+
+    all_idx = []
+    # Distribute samples to each chunk
+    for cls in classes:
+        cls_indices = class_indices[cls]
+        start_position = setting.i * (len(cls_indices) // setting.args.chunks)
+        end_position = start_position + (len(cls_indices) // setting.args.chunks)
+
+        all_idx.append(cls_indices[start_position: end_position])
+
+    all_idx = np.concatenate(all_idx, axis=0)
+    train_dataset.data = train_dataset.data[all_idx]
+    train_dataset.targets = train_dataset.targets[all_idx] 
+    print(len(train_dataset.data))
+    train_dataset, test_dataset = _prepare_data_loaders(train_dataset, test_dataset, setting)
+
+    train_loader = create_seeded_dataloader(setting.args, train_dataset,
+                                            batch_size=setting.args.batch_size, shuffle=True)
+    test_loader = create_seeded_dataloader(setting.args, test_dataset,
+                                           batch_size=setting.args.batch_size, shuffle=False)
+    
+    setting.test_loaders = [test_loader]
+    setting.train_loader = train_loader
+        
+    setting.c_task += 1
+    setting.i += 1
+    return train_loader, test_loader
+
+def store_chunking_loaders_random(train_dataset: Dataset, test_dataset: Dataset,
+                         setting: ContinualDataset) -> Tuple[DataLoader, DataLoader]:
+    """
+    Divides the dataset into chunks completely at random
+
+    Attributes:
+        train_dataset (Dataset): the training dataset
+        test_dataset (Dataset): the test dataset
+        setting (ContinualDataset): the setting of the dataset
+
+    Returns:
+        the training and test loaders
+    """
+    if not isinstance(train_dataset.targets, np.ndarray):
+        train_dataset.targets = np.array(train_dataset.targets)
+    if not isinstance(test_dataset.targets, np.ndarray):
+        test_dataset.targets = np.array(test_dataset.targets)
+
+    #dataset is already permuted. So we just select the i'th chunk
+    start_position = setting.i * (len(train_dataset.data) // setting.args.chunks)
+    end_position = start_position +  (len(train_dataset.data) // setting.args.chunks)
+
+    train_dataset.data = train_dataset.data[start_position: end_position]
+    train_dataset.targets = train_dataset.targets[start_position: end_position]
+    print(len(train_dataset.data))
+    train_dataset, test_dataset = _prepare_data_loaders(train_dataset, test_dataset, setting)
+
+    train_loader = create_seeded_dataloader(setting.args, train_dataset,
+                                            batch_size=setting.args.batch_size, shuffle=True)
+    test_loader = create_seeded_dataloader(setting.args, test_dataset,
+                                           batch_size=setting.args.batch_size, shuffle=False)
+    
+    setting.test_loaders = [test_loader]
+    setting.train_loader = train_loader
+        
+    setting.c_task += 1
+    setting.i += 1
     return train_loader, test_loader

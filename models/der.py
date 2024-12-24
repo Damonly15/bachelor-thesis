@@ -3,12 +3,14 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import torch
 from torch.nn import functional as F
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser, add_experiment_args, add_management_args, add_rehearsal_args
 from utils.buffer import Buffer
-
+from utils.model_utils import adjust_outputs
+from utils.batch_norm import bn_track_stats
 
 class Der(ContinualModel):
     NAME = 'der'
@@ -32,20 +34,41 @@ class Der(ContinualModel):
         self.opt.zero_grad()
         tot_loss = 0
 
-        outputs = self.net(inputs)
-        loss = self.loss(outputs, labels)
-        loss.backward()
-        tot_loss += loss.item()
+        if self.args.training_setting == "class-il":
+            outputs = self.net(inputs)
+            loss = self.loss(outputs, labels)
+            loss.backward()
+            tot_loss += loss.item()
 
-        if not self.buffer.is_empty():
-            buf_inputs, buf_logits = self.buffer.get_data(
-                self.args.minibatch_size, transform=self.transform, device=self.device)
-            buf_outputs = self.net(buf_inputs)
-            loss_mse = self.args.alpha * F.mse_loss(buf_outputs, buf_logits)
-            loss_mse.backward()
-            tot_loss += loss_mse.item()
+            if not self.buffer.is_empty():
+                buf_inputs, buf_logits = self.buffer.get_data(
+                    self.args.minibatch_size, transform=self.transform, device=self.device)
+                buf_outputs = self.net(buf_inputs)
+                loss_mse = self.args.alpha * F.mse_loss(buf_outputs, buf_logits)
+                loss_mse.backward()
+                tot_loss += loss_mse.item()
 
-        self.opt.step()
-        self.buffer.add_data(examples=not_aug_inputs, logits=outputs.data)
+            self.opt.step()
+            self.buffer.add_data(examples=not_aug_inputs, logits=outputs.data)
+
+        else:
+            outputs = self.net(inputs)
+            outputs = adjust_outputs(outputs, (torch.ones(outputs.shape[0], dtype=torch.long, device=self.device) * self.current_task), self._cpt)
+            labels = labels - self.n_past_classes
+            loss = self.loss(outputs, labels)
+            loss.backward()
+            tot_loss += loss.item()
+
+            if not self.buffer.is_empty():
+                buf_inputs, buf_logits, buf_tasklabels = self.buffer.get_data(
+                    self.args.minibatch_size, transform=self.transform, device=self.device)
+                buf_outputs = self.net(buf_inputs)
+                buf_outputs = adjust_outputs(buf_outputs, buf_tasklabels, self._cpt)
+                loss_mse = self.args.alpha * F.mse_loss(buf_outputs, buf_logits)
+                loss_mse.backward()
+                tot_loss += loss_mse.item()
+
+            self.opt.step()
+            self.buffer.add_data(examples=not_aug_inputs, logits=outputs.data, task_labels=torch.ones(outputs.shape[0], dtype=torch.long) * self.current_task)
 
         return tot_loss

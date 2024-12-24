@@ -1,16 +1,10 @@
-import os
-import numpy as np
 import torch
 from torch.nn import functional as F
 
-mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-from backbone.MNISTMLP import MNISTMLP
-from backbone.ResNetBlockLayerNorm import resnet18layernorm
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser, add_experiment_args, add_management_args, add_rehearsal_args
 from utils.buffer import Buffer, fill_buffer
-from utils.batch_norm import bn_track_stats
+from utils.metrics import get_pretrained
 
 class DerPermuted(ContinualModel):
     NAME = 'der_permuted'
@@ -31,6 +25,10 @@ class DerPermuted(ContinualModel):
     def __init__(self, backbone, loss, args, transform):
         super(DerPermuted, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
+
+        self.pretrained_model = get_pretrained(args)
+        self.pretrained_model.to(self.device)
+        self.pretrained_model.eval()
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
 
@@ -61,76 +59,60 @@ class DerPermuted(ContinualModel):
         return tot_loss
 
     def end_task(self, dataset):
-        #load pretrained model
-        if self.args.dataset == "seq-mnist":
-            pretrained_model = MNISTMLP(np.prod(dataset.SIZE), dataset.N_CLASSES)
-            pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/seq_mnist_20epochs.pth"))
-        elif self.args.dataset == "seq-cifar10":
-            pretrained_model = resnet18layernorm(nclasses = dataset.N_CLASSES, inputs_size = dataset.SIZE[0])
-            pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/seq_cifar10_100epochs.pth"))
-        elif self.args.dataset == "perm-mnist":
-            pretrained_model = MNISTMLP(np.prod(dataset.SIZE), dataset.N_CLASSES)
-            pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/perm_mnist_12epochs.pth"))
-        elif self.args.dataset == "seq-tinyimg":
-            pretrained_model = resnet18layernorm(nclasses = dataset.N_CLASSES, inputs_size = dataset.SIZE[0])
-            pretrained_model.load_state_dict(torch.load(mammoth_path + "/pretrained_models/seq_tinyimg_150epochs.pth"))           
-        pretrained_model.to(self.device)
-
         with torch.no_grad():
-            with bn_track_stats(pretrained_model, False):
 
-                #make space in the buffer (each task has the same amount of samples in the buffer)
-                current_task = self.current_task + 1
-                examples_per_task = self.args.buffer_size // current_task
-                remainder = self.args.buffer_size % current_task
+            #make space in the buffer (each task has the same amount of samples in the buffer)
+            current_task = self.current_task
+            examples_per_task = self.args.buffer_size // (current_task+1)
+            remainder = self.args.buffer_size % (current_task+1)
 
-                if(not self.buffer.is_empty()):
-                    buf_x, buf_log, buf_tl = self.buffer.get_all_data()
-                    self.buffer.empty()
+            if(not self.buffer.is_empty()):
+                buf_x, buf_log, buf_tl = self.buffer.get_all_data()
+                self.buffer.empty()
 
-                    for ttl in buf_tl.unique():
-                        idx = (buf_tl == ttl)
-                        ex, log, tasklab = buf_x[idx], buf_log[idx], buf_tl[idx]
-                        if(remainder > 0):
-                            first = min(ex.shape[0], examples_per_task + 1)
-                            remainder -= 1
-                        else:
-                            first = min(ex.shape[0], examples_per_task)
-
-                        self.buffer.add_data(
-                            examples=ex[:first],
-                            logits=log[:first],
-                            task_labels=tasklab[:first])
-
-                #do some foreward passes to fill up buffer with samples from the current task
-                counter = 0
-                for data in dataset.train_loader:
-                    if hasattr(dataset.train_loader.dataset, 'logits'):
-                        inputs, labels, not_aug_inputs, _ = data
+                for ttl in buf_tl.unique():
+                    idx = (buf_tl == ttl)
+                    ex, log, tasklab = buf_x[idx], buf_log[idx], buf_tl[idx]
+                    if(remainder > 0):
+                        first = min(ex.shape[0], examples_per_task + 1)
+                        remainder -= 1
                     else:
-                        inputs, labels, not_aug_inputs = data
-                        
-                    inputs = inputs.to(self.device)
-                    not_aug_inputs = not_aug_inputs.to(self.device)
-                    outputs = pretrained_model(inputs)
-                    outputs = outputs.detach()
+                        first = min(ex.shape[0], examples_per_task)
 
-                    #permute outputs
-                    for pos in range(outputs.shape[0]):
-                        fixed_pos = labels[pos].item()
-                        sub_tensor = outputs[pos]
-                        elements_to_permute = torch.cat((sub_tensor[:fixed_pos], sub_tensor[fixed_pos+1:]))
-                        permuted_elements = elements_to_permute[torch.randperm(elements_to_permute.size(0))]
-                        new_sub_tensor = torch.cat((permuted_elements[:fixed_pos], sub_tensor[fixed_pos:fixed_pos+1], permuted_elements[fixed_pos:]))
-                        outputs[pos] = new_sub_tensor
+                    self.buffer.add_data(
+                        examples=ex[:first],
+                        logits=log[:first],
+                        task_labels=tasklab[:first])
 
-                    if self.args.temperature <= 100:
-                        outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
-                    self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
-                                            logits=outputs.detach()[:(examples_per_task - counter)],
-                                            task_labels=(torch.ones(self.args.batch_size) *
-                                                        current_task)[:(examples_per_task - counter)])
-                
-                    counter += self.args.batch_size
-                    if examples_per_task - counter <= 0:
-                        break
+            #do some foreward passes to fill up buffer with samples from the current task
+            counter = 0
+            for data in dataset.train_loader:
+                if hasattr(dataset.train_loader.dataset, 'logits'):
+                    inputs, labels, not_aug_inputs, _ = data
+                else:
+                    inputs, labels, not_aug_inputs = data
+                    
+                inputs = inputs.to(self.device)
+                not_aug_inputs = not_aug_inputs.to(self.device)
+                outputs = self.pretrained_model(inputs)
+                outputs = outputs.detach()
+
+                #permute outputs
+                for pos in range(outputs.shape[0]):
+                    fixed_pos = labels[pos].item()
+                    sub_tensor = outputs[pos]
+                    elements_to_permute = torch.cat((sub_tensor[:fixed_pos], sub_tensor[fixed_pos+1:]))
+                    permuted_elements = elements_to_permute[torch.randperm(elements_to_permute.size(0))]
+                    new_sub_tensor = torch.cat((permuted_elements[:fixed_pos], sub_tensor[fixed_pos:fixed_pos+1], permuted_elements[fixed_pos:]))
+                    outputs[pos] = new_sub_tensor
+
+                if self.args.temperature <= 100:
+                    outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
+                self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
+                                        logits=outputs.detach()[:(examples_per_task - counter)],
+                                        task_labels=(torch.ones(self.args.batch_size, dtype=torch.long) *
+                                                    current_task)[:(examples_per_task - counter)])
+            
+                counter += self.args.batch_size
+                if examples_per_task - counter <= 0:
+                    break

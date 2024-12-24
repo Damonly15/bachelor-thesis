@@ -64,9 +64,9 @@ class ErLabelsmoothing(ContinualModel):
     
     def end_task(self, dataset):
         #make space in the buffer (each task has the same amount of samples in the buffer)
-        current_task = self.current_task + 1
-        examples_per_task = self.args.buffer_size // current_task
-        remainder = self.args.buffer_size % current_task
+        current_task = self.current_task
+        examples_per_task = self.args.buffer_size // (current_task+1)
+        remainder = self.args.buffer_size % (current_task+1)
 
         if(not self.buffer.is_empty()):
             buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
@@ -97,7 +97,7 @@ class ErLabelsmoothing(ContinualModel):
             not_aug_inputs = not_aug_inputs.to(self.device)
             self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
                                     labels=labels[:(examples_per_task - counter)],
-                                    task_labels=(torch.ones(self.args.batch_size) *
+                                    task_labels=(torch.ones(self.args.batch_size, dtype=torch.long) *
                                                 current_task)[:(examples_per_task - counter)])
         
             counter += self.args.batch_size

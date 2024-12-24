@@ -12,7 +12,8 @@ import timm
 import torch.nn as nn
 from transformers import ConvNextV2ForImageClassification
 
-from backbone.ResNetBottleneck import resnet50
+from backbone.ResNetBlockLayerNorm import resnet18layernorm
+from backbone.ResNetBottleneck import resnet50, resnet50layernorm
 from datasets.seq_cifar10 import TCIFAR10, MyCIFAR10
 from datasets.seq_tinyimagenet import base_path
 from datasets.transforms.denormalization import DeNormalize
@@ -72,14 +73,17 @@ class SequentialCIFAR10224RS(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone():
-        model = CustomConvNextV2ForImageClassification.from_pretrained("facebook/convnextv2-base-1k-224")
-        model.classifier = torch.nn.Linear(model.classifier.in_features, 10)
+    def get_backbone(version):
+        #model = CustomConvNextV2ForImageClassification.from_pretrained("facebook/convnextv2-base-1k-224")
+        #model.classifier = torch.nn.Linear(model.classifier.in_features, 10)
         #model = torchvision.models.convnext_tiny()
         #model.classifier[2] = nn.Linear(model.classifier[2].in_features, 10)
-        #model = timm.create_model('convnext_tiny', pretrained=False)
-        #model.head.fc = torch.nn.Linear(model.head.fc.in_features, 10)
+        model = timm.create_model('convnext_pico', pretrained=False)
+        model.head.fc = torch.nn.Linear(model.head.fc.in_features, 10)
         return model
+        #return resnet50layernorm(SequentialCIFAR10224RS.N_CLASSES_PER_TASK
+        #                * SequentialCIFAR10224RS.N_TASKS)
+
 
     @staticmethod
     def get_loss():
@@ -102,6 +106,7 @@ class SequentialCIFAR10224RS(ContinualDataset):
     @set_default_from_args('batch_size')
     def get_batch_size(self):
         return 32
+    
 #workaround
 class CustomConvNextV2ForImageClassification(ConvNextV2ForImageClassification):
     def forward(self, *args, **kwargs):

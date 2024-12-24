@@ -152,7 +152,7 @@ class ResNet(MammothBackbone):
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(
                     m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm, CustomGroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
@@ -256,7 +256,6 @@ class ResNet(MammothBackbone):
             for _, p in filter(lambda x: filter_s in x[0], self.named_parameters()):
                 p.requires_grad = enable
 
-
 def resnet50(num_classes: int, pretrained=False, **kwargs: Any) -> ResNet:
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
@@ -266,3 +265,18 @@ def resnet50(num_classes: int, pretrained=False, **kwargs: Any) -> ResNet:
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, pretrained=pretrained, **kwargs)
+
+def resnet50layernorm(num_classes: int, pretrained=False, **kwargs: Any) -> ResNet:
+    r"""ResNet-50 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, pretrained=pretrained, norm_layer=CustomGroupNorm, **kwargs)
+
+class CustomGroupNorm(nn.GroupNorm):
+    def __init__(self, num_channels):
+        # Initialize with num_groups = 1 and provided num_channels
+        super(CustomGroupNorm, self).__init__(num_groups=1, num_channels=num_channels)

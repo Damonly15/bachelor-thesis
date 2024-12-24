@@ -3,6 +3,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+from argparse import Namespace
 import os
 from typing import Optional, Tuple
 
@@ -13,13 +14,14 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Dataset
+import copy
 
 from backbone.ResNetBlock import resnet18
 from backbone.ResNetBlockLayerNorm import resnet18layernorm, resnet34layernorm
 from backbone.CNN import CnnLN, CnnBN
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
-                                              store_masked_loaders)
+                                              store_chunking_loaders_random, store_chunking_loaders_classes)
 from utils import smart_joint
 from utils.conf import base_path
 from datasets.utils import set_default_from_args
@@ -114,7 +116,7 @@ class MyTinyImagenet(TinyImagenet):
         return img, target, not_aug_img
 
 
-class SequentialTinyImagenet(ContinualDataset):
+class ChunkingTinyImagenet(ContinualDataset):
     """The Sequential Tiny Imagenet dataset.
 
     Args:
@@ -129,7 +131,7 @@ class SequentialTinyImagenet(ContinualDataset):
         TRANSFORM (torchvision.transforms): transformations to apply to the dataset.
     """
 
-    NAME = 'seq-tinyimg'
+    NAME = 'chu-tinyimg'
     SETTING = 'class-il'
     N_CLASSES_PER_TASK = 20
     N_TASKS = 10
@@ -141,24 +143,35 @@ class SequentialTinyImagenet(ContinualDataset):
          transforms.RandomHorizontalFlip(),
          transforms.ToTensor(),
          transforms.Normalize(MEAN, STD)])
+    
+    train_dataset = MyTinyImagenet(base_path() + 'TINYIMG',
+                                       train=True, download=True, transform=TRANSFORM)
+    
+    def __init__(self, args: Namespace) -> None:
+        super(ChunkingTinyImagenet, self).__init__(args)
+        self.N_TASKS = args.chunks
+        self.N_CLASSES_PER_TASK = self.N_CLASSES
+
+        if not isinstance(self.train_dataset.targets, np.ndarray):
+            self.train_dataset.targets = np.array(self.train_dataset.targets)
+        #randomly permute dataset
+        permutation = np.random.permutation(len(self.train_dataset.data))
+        self.train_dataset.data = self.train_dataset.data[permutation]
+        self.train_dataset.targets = self.train_dataset.targets[permutation]
 
     def get_data_loaders(self) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
-        transform = self.TRANSFORM
-
         test_transform = transforms.Compose(
             [transforms.ToTensor(), self.get_normalization_transform()])
 
-        train_dataset = MyTinyImagenet(base_path() + 'TINYIMG',
-                                       train=True, download=True, transform=transform)
         test_dataset = TinyImagenet(base_path() + 'TINYIMG',
                                     train=False, download=True, transform=test_transform)
 
-        train, test = store_masked_loaders(train_dataset, test_dataset, self)
+        train, test = store_chunking_loaders_random(copy.deepcopy(self.train_dataset), test_dataset, self)
         return train, test
 
     @staticmethod
     def get_backbone(version):
-        num_classes = SequentialTinyImagenet.N_CLASSES_PER_TASK * SequentialTinyImagenet.N_TASKS
+        num_classes = ChunkingTinyImagenet.N_CLASSES_PER_TASK * ChunkingTinyImagenet.N_TASKS
         if version == "0":
             return resnet18layernorm(nclasses = num_classes)
         elif version == '1':
@@ -193,12 +206,12 @@ class SequentialTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_normalization_transform():
-        transform = transforms.Normalize(SequentialTinyImagenet.MEAN, SequentialTinyImagenet.STD)
+        transform = transforms.Normalize(ChunkingTinyImagenet.MEAN, ChunkingTinyImagenet.STD)
         return transform
 
     @staticmethod
     def get_denormalization_transform():
-        transform = DeNormalize(SequentialTinyImagenet.MEAN, SequentialTinyImagenet.STD)
+        transform = DeNormalize(ChunkingTinyImagenet.MEAN, ChunkingTinyImagenet.STD)
         return transform
 
     @set_default_from_args('n_epochs')

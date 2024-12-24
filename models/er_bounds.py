@@ -18,6 +18,7 @@ import torch
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
 from utils.buffer import Buffer
+from utils.model_utils import adjust_outputs
 
 
 class ErBounds(ContinualModel):
@@ -32,7 +33,7 @@ class ErBounds(ContinualModel):
 
         Besides the required `add_management_args` and `add_experiment_args`, this model requires the `add_rehearsal_args` to include the buffer-related arguments.
         """
-        parser = ArgumentParser(description='Continual learning via Experience Replay.')
+        parser = ArgumentParser(description='Continual learning via Experience Replay with task boundaries.')
         add_rehearsal_args(parser)
         return parser
 
@@ -49,57 +50,131 @@ class ErBounds(ContinualModel):
         """
 
         self.opt.zero_grad()
-        if not self.buffer.is_empty():
-            buf_inputs, buf_labels, _ = self.buffer.get_data(
-                self.args.minibatch_size, transform=self.transform, device=self.device)
-            inputs = torch.cat((inputs, buf_inputs))
-            labels = torch.cat((labels, buf_labels))
 
-        outputs = self.net(inputs)
-        loss = self.loss(outputs, labels)
-        loss.backward()
+        if self.args.training_setting == "class-il":
+            if not self.buffer.is_empty():
+                buf_inputs, buf_labels, _ = self.buffer.get_data(
+                    self.args.minibatch_size, transform=self.transform, device=self.device)
+                inputs = torch.cat((inputs, buf_inputs))
+                labels = torch.cat((labels, buf_labels))
+
+            outputs = self.net(inputs)
+            loss = self.loss(outputs, labels)
+            loss.backward()
+        else:
+            batch_size = labels.shape[0]
+            if not self.buffer.is_empty():
+                buf_inputs, buf_labels, buf_tasklabels = self.buffer.get_data(
+                    self.args.minibatch_size, transform=self.transform, device=self.device)
+                task_labels = torch.cat(((torch.ones(batch_size,  dtype=torch.int64, device=self.device) * self.current_task), buf_tasklabels))
+                inputs = torch.cat((inputs, buf_inputs))
+                labels = torch.cat((labels, buf_labels))
+            else:
+                task_labels = (torch.ones(batch_size, dtype=torch.int64, device=self.device) * self.current_task)
+
+            outputs = self.net(inputs)
+            outputs = adjust_outputs(outputs, task_labels, self._cpt)
+            labels = labels - (task_labels * self._cpt)
+            loss = self.loss(outputs, labels)
+            loss.backward()                
         self.opt.step()
 
         return loss.item()
     
-    def end_task(self, dataset):
-        #make space in the buffer (each task has the same amount of samples in the buffer)
-        current_task = self.current_task + 1
-        examples_per_task = self.args.buffer_size // current_task
-        remainder = self.args.buffer_size % current_task
+    def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
+        if self.args.buffer_size == dataset.N_CLASSES: #one sample per class
+            examples_per_class = 1
+            remainder = 0
+        else:
+            examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
+            remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
 
-        if(not self.buffer.is_empty()):
+        # fdr reduce coreset
+        if self.current_task > 0:
             buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
             self.buffer.empty()
 
-            for ttl in buf_tl.unique():
-                idx = (buf_tl == ttl)
+            for tl in buf_lab.unique():
+                idx = tl == buf_lab
                 ex, lab, tasklab = buf_x[idx], buf_lab[idx], buf_tl[idx]
                 if(remainder > 0):
-                    first = min(ex.shape[0], examples_per_task + 1)
+                    first = min(ex.shape[0], examples_per_class + 1)
                     remainder -= 1
                 else:
-                    first = min(ex.shape[0], examples_per_task)
-
+                    first = min(ex.shape[0], examples_per_class)
                 self.buffer.add_data(
                     examples=ex[:first],
                     labels=lab[:first],
-                    task_labels=tasklab[:first])
+                    task_labels=tasklab[:first]
+                )
 
-        #do some foreward passes to fill up buffer with samples from the current task
-        counter = 0
+        # fdr add new task
+        ce = torch.tensor([examples_per_class] * self.cpt).int()
+        for i in range(remainder):
+            ce[i] += 1 
+
         for data in dataset.train_loader:
-            if hasattr(dataset.train_loader.dataset, 'logits'):
-                _, labels, not_aug_inputs, _ = data
-            else:
-                _, labels, not_aug_inputs = data
-
+            inputs, labels, not_aug_inputs = data
             not_aug_inputs = not_aug_inputs.to(self.device)
-            self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
-                                    labels=labels[:(examples_per_task - counter)],
-                                    task_labels=(torch.ones(self.args.batch_size) *
-                                                current_task)[:(examples_per_task - counter)])
-        
-            counter += self.args.batch_size
-            if examples_per_task - counter <= 0:
+            if all(ce == 0):
                 break
+
+            flags = torch.zeros(len(inputs)).bool()
+            for j in range(len(flags)):
+                if ce[labels[j] % self.cpt] > 0:
+                    flags[j] = True
+                    ce[labels[j] % self.cpt] -= 1
+
+            self.buffer.add_data(examples=not_aug_inputs[flags],
+                                    labels=labels[flags],
+                                    task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
+
+        _, lab, _, = self.buffer.get_all_data()
+        print(lab)
+
+"""
+old buffer filling
+#make space in the buffer (each task has the same amount of samples in the buffer)
+current_task = self.current_task
+examples_per_task = self.args.buffer_size // (current_task+1)
+remainder = self.args.buffer_size % (current_task+1)
+
+if(not self.buffer.is_empty()):
+    buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
+    self.buffer.empty()
+
+    for ttl in buf_tl.unique():
+        idx = (buf_tl == ttl)
+        ex, lab, tasklab = buf_x[idx], buf_lab[idx], buf_tl[idx]
+        if(remainder > 0):
+            first = min(ex.shape[0], examples_per_task + 1)
+            remainder -= 1
+        else:
+            first = min(ex.shape[0], examples_per_task)
+
+        self.buffer.add_data(
+            examples=ex[:first],
+            labels=lab[:first],
+            task_labels=tasklab[:first])
+
+#do some foreward passes to fill up buffer with samples from the current task
+counter = 0
+for data in dataset.train_loader:
+    if hasattr(dataset.train_loader.dataset, 'logits'):
+        _, labels, not_aug_inputs, _ = data
+    else:
+        _, labels, not_aug_inputs = data
+
+    not_aug_inputs = not_aug_inputs.to(self.device)
+    if self.args.training_setting == "task-il":
+        labels = labels - self.n_past_classes
+
+    self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
+                            labels=labels[:(examples_per_task - counter)],
+                            task_labels=(torch.ones(self.args.batch_size, dtype=torch.long) *
+                                        current_task)[:(examples_per_task - counter)])
+
+    counter += self.args.batch_size
+    if examples_per_task - counter <= 0:
+        break
+"""

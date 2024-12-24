@@ -1,133 +1,67 @@
-
-	- Took: 8.92 s                                                                
-Accuracy for 2 task(s): 	 [Class-IL]: 25.0 % 	 [Task-IL]: 50.0 %
-	Raw accuracy values: Class-IL [50.0, 0.0] | Task-IL [50.0, 50.0]
-[ 08-22 | 11:56 ] Task 3 | epoch 0
-                                             Warning: quadprog not found (GEM and A-GEM will not work)
+Warning: quadprog not found (GEM and A-GEM will not work)
 Error in model agem
 	- 
 Error in model agem_r
 Error in model gem
+Error in model der_pretrained
+	- cannot import name 'get_pretrained' from 'utils.metrics' (/cluster/home/dammeier/mammoth-bachelorthesis-new/utils/metrics.py)
+Error in model der_permuted
 Warning: n_epochs set to 1 instead of 50.
 wandb: Currently logged in as: dammeier. Use `wandb login --relogin` to force relogin
-wandb: wandb version 0.17.7 is available!  To upgrade, please run:
+wandb: wandb version 0.19.1 is available!  To upgrade, please run:
 wandb:  $ pip install wandb --upgrade
 wandb: Tracking run with wandb version 0.17.1
-wandb: Run data is saved locally in /cluster/home/dammeier/mammoth-bachelorthesis-new/wandb/run-20240822_115752-pxfcpk3m
-wandb: Run `w
-	- Took: 34.55 s                                                               
-Accuracy for 5 task(s): 	 [Class-IL]: 84.06 % 	 [Task-IL]: 97.45 %
-	Raw accuracy values: Class-IL [69.55, 84.05, 76.9, 91.55, 98.25] | Task-IL [98.8, 92.7, 97.35000000000001, 99.5, 98.9]
-wandb: - 0.009 MB of 0.009 MB uploaded
-	- Took: 25.65 s                                                               
-wandb: \ 0.009 MB of 0.009 MB uploadedwandb: | 0.009 MB of 0.009 MB uploadedwandb: / 0.009 MB of 0.009 MB uploadedwandb: - 0.009 MB of 0.019 MB uploadedwandb: \ 0.009 MB of 0.019 MB uploadedwandb: | 0.020 MB of 0.020 MB uploadedwandb:                                                                                
-wandb: 
-wandb: Run history:
-wandb:     RESULT_class_acc_1 █▇▇▇▁
-wandb:     RESULT_class_acc_2 █▁▃▂
-wandb:     RESULT_class_acc_3 █▂▁
-wandb:     RESULT_class_acc_4 █▁
-wandb:     RESULT_class_acc_5 ▁
-wandb: RESULT_class_mean_accs █▅▄▄▁
-wandb:      RESULT_task_acc_1 ▄▁▂█▄
-wandb:      RESULT_task_acc_2 ▁█▇▁
-wandb:      RESULT_task_acc_3 ▁█▁
-wandb:      RESULT_task_acc_4 █▁
-wandb:      RESULT_task_acc_5 ▁
-wandb:  RESULT_task_mean_accs █▁▄▆▅
-wandb:                   Task ▁▃▅▆█
-wandb:                   loss ▄▂▂▁▁▁▁▁█▃▃▂▂▂▂▂█▄▄▃▂▂▂▁▆▃▃▂▁▁▁▁▆▃▂▁▂▁▁▁
-wandb:               loss_mse ▇▅▅▂▂▂▁▁▁▁▅█▆█▅▄▃▄▃▃▅▇▆▆▄▃▃▃▃▃▇▃▄▄▃▂▃▂▂▁
-wandb:                     lr ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-wandb:               tot_loss ▄▂▂▁▁▁▁▁█▃▃▂▂▂▂▂█▆▅▃▂▂▂▂▇▄▄▃▂▂▂▂▇▃▃▂▂▂▁▁
-wandb: 
-wandb: Run summary:
-wandb:     RESULT_class_acc_1 69.55
-wandb:     RESULT_class_acc_2 84.05
-wandb:     RESULT_class_acc_3 76.9
-wandb:     RESULT_class_acc_4 91.55
-wandb:     RESULT_class_acc_5 98.25
-wandb: RESULT_class_mean_accs 84.06
-wandb:      RESULT_task_acc_1 98.8
-wandb:      RESULT_task_acc_2 92.7
-wandb:      RESULT_task_acc_3 97.35
-wandb:      RESULT_task_acc_4 99.5
-wandb:      RESULT_task_acc_5 98.9
-wandb:  RESULT_task_mean_accs 97.45
-wandb:                   Task 5
-wandb:                   loss 0.09889
-wandb:               loss_mse 0.10211
-wandb:                     lr 0.001
-wandb:               tot_loss 0.20099
-wandb:              wandb_url https://wandb.ai/dam...
-wandb: 
-wandb: 🚀 View run der_tempbounds_B6DVX at: https://wandb.ai/dammeier/testing/runs/0aqtyq2v
-wandb: ⭐️ View project at: https://wandb.ai/dammeier/testing
-wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
-wandb: Find logs at: ./wandb/run-20240822_114528-0aqtyq2v/logs
-Accuracy for 5 task(s): 	 [Class-IL]: 10.0 % 	 [Task-IL]: 50.0 %
-	Raw accuracy values: Class-IL [50.0, 0.0, 0.0, 0.0, 0.0] | Task-IL [50.0, 50.0, 50.0, 50.0, 50.0]
-ng_convnextv2.py", line 382, in forward
-    encoder_outputs = self.encoder(
-                      ^^^^^^^^^^^^^
-  Filwandb: - 0.009 MB of 0.009 MB uploadedwandb: \ 0.009 MB of 0.009 MB uploadedwandb: | 0.009 MB of 0.009 MB uploadedwandb: / 0.009 MB of 0.009 MB uploadedwandb: - 0.009 MB of 0.009 MB uploadedwandb: \ 0.009 MB of 0.019 MB uploadedwandb: | 0.020 MB of 0.020 MB uploadedwandb: / 0.020 MB of 0.020 MB uploadedwandb: - 0.020 MB of 0.020 MB uploadedwandb: \ 0.020 MB of 0.020 MB uploadedwandb: | 0.020 MB of 0.020 MB uploadedwandb: / 0.020 MB of 0.020 MB uploadedwandb: - 0.020 MB of 0.020 MB uploadedwandb: \ 0.020 MB of 0.020 MB uploadedwandb: | 0.020 MB of 0.020 MB uploadedwandb: / 0.020 MB of 0.020 MB uploadedwandb: - 0.020 MB of 0.020 MB uploadedwandb:                                                                                
-wandb: 
-wandb: Run history:
-wandb:     RESULT_class_acc_1 ▁▁▁▁▁
-wandb:     RESULT_class_acc_2 ▁▁▁▁
-wandb:     RESULT_class_acc_3 ▁▁▁
-wandb:     RESULT_class_acc_4 ▁▁
-wandb:     RESULT_class_acc_5 ▁
-wandb: RESULT_class_mean_accs █▄▂▁▁
-wandb:      RESULT_task_acc_1 ▁▁▁▁▁
-wandb:      RESULT_task_acc_2 ▁▁▁▁
-wandb:      RESULT_task_acc_3 ▁▁▁
-wandb:      RESULT_task_acc_4 ▁▁
-wandb:      RESULT_task_acc_5 ▁
-wandb:  RESULT_task_mean_accs ▁▁▁▁▁
-wandb:                   Task ▁▃▅▆█
-wandb:                   loss ▄▁▁▁▁▁▁▁█▇██████▅▆▆▆▆▆▆▆▆▆▅▅▆▆▅▅▆▆▅▅▆▆▆▆
-wandb:               loss_mse ▂▂▃▂▂▂▂▂▃▂▃▄▅▂▅▅▅▃▅▅▆▅▄▆▇▇▄▅▃▁▅▂▁█▃▅▅▇▆▄
-wandb:                     lr ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-wandb:               tot_loss ▃▁▁▁▁▁▁▁████████▇▇▇▇▇▇▇▇▆▇▇▇▇▇▇▇█▇▇▇██▇█
-wandb: 
-wandb: Run summary:
-wandb:     RESULT_class_acc_1 50.0
-wandb:     RESULT_class_acc_2 0.0
-wandb:     RESULT_class_acc_3 0.0
-wandb:     RESULT_class_acc_4 0.0
-wandb:     RESULT_class_acc_5 0.0
-wandb: RESULT_class_mean_accs 10.0
-wandb:      RESULT_task_acc_1 50.0
-wandb:      RESULT_task_acc_2 50.0
-wandb:      RESULT_task_acc_3 50.0
-wandb:      RESULT_task_acc_4 50.0
-wandb:      RESULT_task_acc_5 50.0
-wandb:  RESULT_task_mean_accs 50.0
-wandb:                   Task 5
-wandb:                   loss 3.09159
-wandb:               loss_mse 2.91443
-wandb:                     lr 0.001
-wandb:               tot_loss 6.00601
-wandb:              wandb_url https://wandb.ai/dam...
-wandb: 
-wandb: 🚀 View run der_tempbounds_B6DVX at: https://wandb.ai/dammeier/testing/runs/14akx1qb
-wandb: ⭐️ View project at: https://wandb.ai/dammeier/testing
-wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
-wandb: Find logs at: ./wandb/run-20240822_115233-14akx1qb/logs
+wandb: Run data is saved locally in /cluster/home/dammeier/mammoth-bachelorthesis-new/wandb/run-20241224_120203-2sbohm5w
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run der_wa_B6DVX
+wandb: ⭐️ View project at https://wandb.ai/dammeier/testing
+wandb: 🚀 View run at https://wandb.ai/dammeier/testing/runs/2sbohm5w
 
-	- Took: 13.99 s                                                               
-Accuracy for 2 task(s): 	 [Class-IL]: 51.38 % 	 [Task-IL]: 68.95 %
-	Raw accuracy values: Class-IL [64.35, 38.4] | Task-IL [71.7, 66.2]
-[ 08-22 | 12:09 ] Task 3 | epoch 0
+[ 12-24 | 12:02 ] Task 1 | epoch 0
                                              
-	- Took: 22.96 s                                                               
-Accuracy for 3 task(s): 	 [Class-IL]: 40.45 % 	 [Task-IL]: 65.87 %
-	Raw accuracy values: Class-IL [63.6, 0.3, 57.45] | Task-IL [71.75, 56.49999999999999, 69.35]
-[ 08-22 | 12:14 ] Task 4 | epoch 0
+	- Took: 8.16 s                                                                
+Accuracy for 1 task(s): 	 [Class-IL]: 75.4 % 	 [Task-IL]: 75.4 %
+	Raw accuracy values: Class-IL [75.4] | Task-IL [75.4]
+[ 12-24 | 12:02 ] Task 2 | epoch 0
                                              
-	- Took: 31.68 s                                                               
-Accuracy for 4 task(s): 	 [Class-IL]: 29.52 % 	 [Task-IL]: 65.47 %
-	Raw accuracy values: Class-IL [52.75, 0.5, 1.15, 63.7] | Task-IL [74.85000000000001, 48.6, 66.55, 71.89999999999999]
-[ 08-22 | 12:18 ] Task 5 | epoch 0
-                                             slurmstepd: error: *** JOB 5784816 ON eu-g4-031 CANCELLED AT 2024-08-22T12:22:57 DUE TO TIME LIMIT ***
+	- Took: 6.55 s                                                                
+Traceback (most recent call last):
+  File "/cluster/home/dammeier/mammoth-bachelorthesis-new/utils/main.py", line 245, in <module>
+    main()
+  File "/cluster/home/dammeier/mammoth-bachelorthesis-new/utils/main.py", line 241, in main
+    train(model, dataset, args)
+  File "/cluster/home/dammeier/mammoth-bachelorthesis-new/utils/training.py", line 334, in train
+    model.meta_end_task(dataset)
+  File "/cluster/home/dammeier/mammoth-bachelorthesis-new/models/utils/continual_model.py", line 308, in meta_end_task
+    self.end_task(dataset)
+  File "/cluster/home/dammeier/mammoth-bachelorthesis-new/models/der_wa.py", line 154, in end_task
+    self.net.classifier.weight[old_position:new_position] =  (mean_norm_old / mean_norm_new) * self.net.classifier.weight[old_position:new_position]
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: a view of a leaf Variable that requires grad is being used in an in-place operation.
+wandb: - 0.015 MB of 0.015 MB uploadedwandb: \ 0.015 MB of 0.015 MB uploadedwandb: | 0.015 MB of 0.015 MB uploadedwandb: / 0.015 MB of 0.015 MB uploadedwandb: - 0.027 MB of 0.038 MB uploaded (0.006 MB deduped)wandb: \ 0.038 MB of 0.038 MB uploaded (0.006 MB deduped)wandb: 
+wandb: Run history:
+wandb:     RESULT_class_acc_1 ▁
+wandb: RESULT_class_mean_accs ▁
+wandb:      RESULT_task_acc_1 ▁
+wandb:  RESULT_task_mean_accs ▁
+wandb:                   Task ▁
+wandb:                   loss ▇▅▄▃▃▄▄▂▁▄▃▃▂▄▁▄▁▃▃▄█▅▄▅▅▄▄▄▄▅▃▄▄▄▄▄▄▄▄▃
+wandb:                loss_kl ▁▆▇█▇█▆▇█▇▇▇██▇▇▆▇▇▆▇▆▇▇▇▆▇▇▆▇▇▇▇▇▇▇▅▇▆▆
+wandb:                     lr ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:               tot_loss ▅▄▃▂▃▄▃▂▁▃▂▃▂▄▁▄▁▂▂▃█▆▅▆▆▅▅▅▅▆▅▅▅▅▅▅▅▅▅▄
+wandb: 
+wandb: Run summary:
+wandb:     RESULT_class_acc_1 75.4
+wandb: RESULT_class_mean_accs 75.4
+wandb:      RESULT_task_acc_1 75.4
+wandb:  RESULT_task_mean_accs 75.4
+wandb:                   Task 1
+wandb:                   loss 0.62479
+wandb:                loss_kl 0.15332
+wandb:                     lr 0.01
+wandb:               tot_loss 0.77812
+wandb: 
+wandb: 🚀 View run der_wa_B6DVX at: https://wandb.ai/dammeier/testing/runs/2sbohm5w
+wandb: ⭐️ View project at: https://wandb.ai/dammeier/testing
+wandb: Synced 5 W&B file(s), 0 media file(s), 2 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20241224_120203-2sbohm5w/logs

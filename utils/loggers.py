@@ -282,7 +282,7 @@ class Logger:
             wandb.log({'CPU_memory_usage': cpu_res, **{f'GPU_{i}_memory_usage': r for i, r in gpu_res.items()}})
         """
 
-    def write(self, args: Dict[str, Any]) -> None:
+    def write(self, args: Dict[str, Any], result_type) -> None:
         """
         Writes out the logged value along with its arguments in the default path (`data/results`).
 
@@ -290,51 +290,39 @@ class Logger:
             args: the namespace of the current experiment
         """
         wrargs = args.copy()
-
-        for i, acc in enumerate(self.accs):
-            wrargs['accmean_task' + str(i + 1)] = acc
-
-        for i, fa in enumerate(self.fullaccs):
-            for j, acc in enumerate(fa):
-                wrargs['accuracy_' + str(j + 1) + '_task' + str(i + 1)] = acc
-
-        #wrargs['cpu_memory_usage'] = self.cpu_res
-        #wrargs['gpu_memory_usage'] = self.gpu_res
-        """
-        if self.setting == 'domain-il' or self.setting == 'general-continual':
-            #self.fwt(self, self.fullaccs, self.accs, self.fullaccs_mask_classes, self.accs_mask_classes)
-            wrargs['forward_transfer'] = self.fwt      
-            self.add_bwt(self.fullaccs, None)
-            wrargs['backward_transfer'] = self.bwt
-            self.add_forgetting(self.fullaccs, None)
-            wrargs['forgetting'] = self.forgetting
-        else:  
-            #self.fwt(self, self.fullaccs, self.accs, self.fullaccs_mask_classes, self.accs_mask_classes)
-            wrargs['forward_transfer'] = self.fwt      
-            self.add_bwt(self.fullaccs, self.fullaccs_mask_classes)
-            wrargs['backward_transfer'] = self.bwt
-            self.add_forgetting(self.fullaccs, self.fullaccs_mask_classes)
-            wrargs['forgetting'] = self.forgetting
-        """
-        wrargs['forward_transfer'] = self.fwt
-        wrargs['backward_transfer'] = self.bwt
-        wrargs['forgetting'] = self.forgetting
+        wrargs['result_type'] = result_type
 
         target_folder = base_path() + "results/"
+        
+        if args["training_setting"] == "class-il": #here we log to class-il accuracies
+            for i, acc in enumerate(self.accs):
+                wrargs['accmean_task' + str(i + 1)] = acc
 
-        create_if_not_exists(target_folder + self.setting)
-        create_if_not_exists(target_folder + self.setting +
-                             "/" + self.dataset)
-        create_if_not_exists(target_folder + self.setting +
-                             "/" + self.dataset + "/" + self.model)
+            for i, fa in enumerate(self.fullaccs):
+                for j, acc in enumerate(fa):
+                    wrargs['accuracy_' + str(j + 1) + '_task' + str(i + 1)] = acc
 
-        path = target_folder + self.setting + "/" + self.dataset\
-            + "/" + self.model + "/logs.txt"
-        print("Logging results and arguments in " + path)
-        with open(path, 'a') as f:
-            f.write(str(wrargs) + '\n')
+            #wrargs['cpu_memory_usage'] = self.cpu_res
+            #wrargs['gpu_memory_usage'] = self.gpu_res
 
-        if self.setting == 'class-il':
+            wrargs['forward_transfer'] = self.fwt
+            wrargs['backward_transfer'] = self.bwt
+            wrargs['forgetting'] = self.forgetting
+
+            create_if_not_exists(target_folder + self.setting)
+            create_if_not_exists(target_folder + self.setting +
+                                "/" + self.dataset)
+            create_if_not_exists(target_folder + self.setting +
+                                "/" + self.dataset + "/" + self.model)
+
+            path = target_folder + self.setting + "/" + self.dataset\
+                + "/" + self.model + "/logs.txt"
+            print("Logging Class-IL results and arguments in " + path)
+            with open(path, 'a') as f:
+                f.write(str(wrargs) + '\n')
+
+        #here we log to task-il accuracies. This is only possible if dataset is compatible with task-il and if we set the training to task-il
+        if self.setting == 'class-il' and args["training_setting"] == "task-il":
             create_if_not_exists(smart_joint(*[target_folder, "task-il/", self.dataset]))
             create_if_not_exists(target_folder + "task-il/"
                                  + self.dataset + "/" + self.model)
@@ -352,5 +340,7 @@ class Logger:
 
             path = target_folder + "task-il" + "/" + self.dataset + "/"\
                 + self.model + "/logs.txt"
+
+            print("Logging Task-IL results and arguments in " + path)
             with open(path, 'a') as f:
                 f.write(str(wrargs) + '\n')

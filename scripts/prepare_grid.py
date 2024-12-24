@@ -10,17 +10,30 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'seq_mnist_tests',
+        'name':'seq_cifar10_tests',
         'combos': {
-            "dataset": ['seq-mnist'],
-            "model": ["der_labelsmoothing"],
-            "buffer_size": [200],
-            "lr": [0.01],
-            "alpha": [0.03, 0.1],
-            "temperature": [20],
+            "dataset": ['chu-cifar10'],
+            "model": ["sgd"],
+            #"buffer_size": [200, 500, 1400],
+            "lr": [0.03],
+            #"alpha": [0.03, 0.1],
+            #"beta": [2],
+            #"temperature": [20],
             "seed": [1000, 2000, 3000],
-            "enable_other_metrics" : [1],
-            "log_feature_forgetting": [1]
+            #"enable_other_metrics" : [1],
+            "log_feature_forgetting": ["features"],
+            #"training_setting": ["task-il"],
+            #"teacher": ["convnext_pico.d1_in1k","resnet18.a1_in1k"],
+            #"algorithm": ["derpretrained2", "derpermuted", "erlabelsmoothing"]
+            #"n_epochs": [150],
+            #"backbone": ["10"],
+            #"optimizer": ["adamw"],
+            #"optim_wd": [0, 0.05],
+            #"joint": [1],
+            #"align_bn": [0, 1],
+            #"number_iterations": ["fixed"],
+            "chunking": [1, 2, 5, 10, 20, 40, 80],
+            "eval_epochs": [1]
         },
     },
 ]
