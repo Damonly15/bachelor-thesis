@@ -96,6 +96,7 @@ logs
 _autosummary
 generated
 val_permutations
-models/
+pretrained_models/
+plot_dataframes/
 utils/plotter.py
 utils/plotter_together.py
