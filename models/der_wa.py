@@ -28,9 +28,10 @@ class DerWA(ContinualModel):
         self.buffer = Buffer(self.args.buffer_size)
 
         #remove bias parameter
-        in_features = self.net.classifier.in_features
-        out_features = self.net.classifier.out_features
-        self.net.classifier = nn.Linear(in_features, out_features, bias=False)  # New Linear layer without bias
+        with torch.no_grad():
+            in_features = self.net.classifier.in_features
+            out_features = self.net.classifier.out_features
+            self.net.classifier = nn.Linear(in_features, out_features, bias=False)  # New Linear layer without bias
 
         self.target_classifier = None
 
@@ -139,16 +140,17 @@ class DerWA(ContinualModel):
 
         #bias correction
         if self.current_task != 0:
-            self.target_classifier = copy.deepcopy(self.net.classifier)
-            old_position = self.current_task * self._cpt
-            new_position = old_position + self._cpt
+            with torch.no_grad():
+                self.target_classifier = copy.deepcopy(self.net.classifier)
+                old_position = self.current_task * self._cpt
+                new_position = old_position + self._cpt
 
-            norms_old = self.net.classifier.weight[0:old_position].norm(p=2, dim=1)
-            mean_norm_old = norms_old.mean()
-            print(mean_norm_old)
+                norms_old = self.net.classifier.weight[0:old_position].norm(p=2, dim=1)
+                mean_norm_old = norms_old.mean()
+                print(mean_norm_old)
 
-            norms_new = self.net.classifier.weight[old_position:new_position].norm(p=2, dim=1)
-            mean_norm_new = norms_new.mean()
-            print(mean_norm_new)
+                norms_new = self.net.classifier.weight[old_position:new_position].norm(p=2, dim=1)
+                mean_norm_new = norms_new.mean()
+                print(mean_norm_new)
 
-            self.net.classifier.weight[old_position:new_position] =  (mean_norm_old / mean_norm_new) * self.net.classifier.weight[old_position:new_position]
+                self.net.classifier.weight[old_position:new_position] =  (mean_norm_old / mean_norm_new) * self.net.classifier.weight[old_position:new_position]
