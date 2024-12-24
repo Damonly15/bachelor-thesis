@@ -100,3 +100,5 @@ pretrained_models/
 plot_dataframes/
 utils/plotter.py
 utils/plotter_together.py
+out.err
+test.py
