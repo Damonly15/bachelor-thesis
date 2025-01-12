@@ -71,4 +71,20 @@ class Der(ContinualModel):
             self.opt.step()
             self.buffer.add_data(examples=not_aug_inputs, logits=outputs.data, task_labels=torch.ones(outputs.shape[0], dtype=torch.long) * self.current_task)
 
+        #weight clipping to be positive
+        with torch.no_grad():
+            self.net.classifier.weight.data.clamp_(min=0)
+            if self.net.classifier.bias is not None:  # Check if the layer has a bias term
+                self.net.classifier.bias.data.clamp_(min=0)  # Clip bias to be non-negative
+
+            _wandb_old_position = self.current_task * self._cpt
+            _wandb_new_position = _wandb_old_position + self._cpt
+
+            if _wandb_old_position > 0:
+                norms_old = self.net.classifier.weight[0:_wandb_old_position].norm(p=2, dim=1)
+                _wandb_mean_norm_old = norms_old.mean()
+
+            norms_new = self.net.classifier.weight[_wandb_old_position:_wandb_new_position].norm(p=2, dim=1)
+            _wandb_mean_norm_new = norms_new.mean()
+
         return tot_loss

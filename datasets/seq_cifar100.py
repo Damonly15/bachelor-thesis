@@ -12,7 +12,10 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torchvision.datasets import CIFAR100
 
-from backbone.ResNetBlock import resnet18
+from backbone.ResNetBlock import resnet18, resnet18_nb
+from backbone.ResNetBlockLayerNorm import resnet18layernorm, resnet18layernorm_nb, resnet34layernorm
+from backbone.ResNetBlockContinualNorm import resnet18continualnorm
+from backbone.CNN import CnnLN, CnnBN
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_masked_loaders)
@@ -124,9 +127,12 @@ class SequentialCIFAR100(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone():
-        return resnet18(SequentialCIFAR100.N_CLASSES_PER_TASK
-                        * SequentialCIFAR100.N_TASKS)
+    def get_backbone(version):
+        num_classes = SequentialCIFAR100.N_CLASSES_PER_TASK * SequentialCIFAR100.N_TASKS
+        if version == "ResNet18_BN":
+            return resnet18(nclasses = num_classes)
+        elif version == "ResNet18_LN":
+            return resnet18layernorm(nclasses = num_classes)
 
     @staticmethod
     def get_loss():
@@ -150,6 +156,7 @@ class SequentialCIFAR100(ContinualDataset):
     def get_batch_size(self):
         return 32
 
+    """
     @staticmethod
     def get_scheduler(model, args: Namespace, reload_optim=True) -> torch.optim.lr_scheduler:
         scheduler = ContinualDataset.get_scheduler(model, args, reload_optim)
@@ -158,3 +165,4 @@ class SequentialCIFAR100(ContinualDataset):
                 model.opt = model.get_optimizer()
             scheduler = torch.optim.lr_scheduler.MultiStepLR(model.opt, [35, 45], gamma=0.1, verbose=False)
         return scheduler
+    """

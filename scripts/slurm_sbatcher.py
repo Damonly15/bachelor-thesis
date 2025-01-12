@@ -4,6 +4,7 @@ import socket
 import time
 import math
 
+#export CUDA_LAUNCH_BLOCKING=1
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Slurm sbatcher', allow_abbrev=False)
     parser.add_argument('--file', type=str, required=True, help='File with arguments to run. Should be a list of strings, one per line')
@@ -101,10 +102,7 @@ if __name__ == '__main__':
 {exclusion}
 
 {f"source {args.bashrc}" if args.bashrc is not None else ""}
-# get random port
-export MASTER_PORT=$(( ((RANDOM<<15)|RANDOM) % 63001 + 2000 ))
-# get first node in slurm
-export MASTER_ADDR=$(scontrol show hostnames $SLURM_NODELIST | head -n1)
+export CUDA_LAUNCH_BLOCKING=1
 
 args=(
 {all_com_str}

@@ -7,8 +7,8 @@ from utils.buffer import Buffer, fill_buffer
 from utils.batch_norm import bn_track_stats
 from utils.model_utils import adjust_outputs
 
-class DerBounds(ContinualModel):
-    NAME = 'der_bounds'
+class DerBounds2(ContinualModel):
+    NAME = 'der_bounds2'
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il'] #this needs task boundaries but no test time oracle
 
     @staticmethod
@@ -23,8 +23,9 @@ class DerBounds(ContinualModel):
         return parser
 
     def __init__(self, backbone, loss, args, transform):
-        super(DerBounds, self).__init__(backbone, loss, args, transform)
+        super(DerBounds2, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
+        self.buffer2 = Buffer(self.args.buffer_size)
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         self.opt.zero_grad()
@@ -84,6 +85,7 @@ class DerBounds(ContinualModel):
 
         examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
         remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
+        remainder2 = remainder
 
         # fdr reduce coreset
         if not self.buffer.is_empty():
@@ -105,10 +107,33 @@ class DerBounds(ContinualModel):
                     task_labels=tasklab[:first]
                 )
 
+            #second buffer
+            buf_x, buf_lab, buf_log, buf_tl = self.buffer2.get_all_data()
+            self.buffer2.empty()
+
+            for tl in buf_lab.unique():
+                idx = tl == buf_lab
+                ex, lab, log, tasklab = buf_x[idx], buf_lab[idx], buf_log[idx], buf_tl[idx]
+                if(remainder2 > 0):
+                    first = min(ex.shape[0], examples_per_class + 1)
+                    remainder2 -= 1
+                else:
+                    first = min(ex.shape[0], examples_per_class)
+                self.buffer2.add_data(
+                    examples=ex[:first],
+                    labels=lab[:first],
+                    logits=log[:first],
+                    task_labels=tasklab[:first]
+                )
+
         # fdr add new task
         ce = torch.tensor([examples_per_class] * self.cpt).int()
         for i in range(remainder):
             ce[i] += 1 
+        
+        ce2 = torch.tensor([examples_per_class] * self.cpt).int()
+        for i in range(remainder2):
+            ce2[i] += 1 
 
         with torch.no_grad():
             with bn_track_stats(self.net, False):
@@ -125,78 +150,29 @@ class DerBounds(ContinualModel):
                         if self.args.temperature <= 100:
                             outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
 
-                    if all(ce == 0):
+                    if not all(ce == 0):
+                        flags = torch.zeros(len(inputs)).bool()
+                        for j in range(len(flags)):
+                            if ce[labels[j] % self.cpt] > 0:
+                                flags[j] = True
+                                ce[labels[j] % self.cpt] -= 1
+
+                        self.buffer.add_data(examples=not_aug_inputs[flags],
+                                            labels=labels[flags],
+                                            logits=((outputs.detach()).cpu())[flags],
+                                            task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
+                    elif not all(ce2 == 0):
+                        flags = torch.zeros(len(inputs)).bool()
+                        for j in range(len(flags)):
+                            if ce2[labels[j] % self.cpt] > 0:
+                                flags[j] = True
+                                ce2[labels[j] % self.cpt] -= 1
+
+                        self.buffer2.add_data(examples=not_aug_inputs[flags],
+                                            labels=labels[flags],
+                                            logits=((outputs.detach()).cpu())[flags],
+                                            task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
+                    else:
                         break
-
-                    flags = torch.zeros(len(inputs)).bool()
-                    for j in range(len(flags)):
-                        if ce[labels[j] % self.cpt] > 0:
-                            flags[j] = True
-                            ce[labels[j] % self.cpt] -= 1
-
-                    self.buffer.add_data(examples=not_aug_inputs[flags],
-                                         labels=labels[flags],
-                                         logits=((outputs.detach()).cpu())[flags],
-                                         task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
-
+         
         self.net.train(tng)
-
-"""
-old buffer filling
-#deactivate running mean and variance of batchnorm layers
-with bn_track_stats(self.net, False):
-    #make space in the buffer (each task has the same amount of samples in the buffer)
-    current_task = self.current_task
-    examples_per_task = self.args.buffer_size // (current_task+1)
-    remainder = self.args.buffer_size % (current_task+1)
-
-    if(not self.buffer.is_empty()):
-        buf_x, buf_log, buf_tl = self.buffer.get_all_data()
-        self.buffer.empty()
-
-        for ttl in buf_tl.unique():
-            idx = (buf_tl == ttl)
-            ex, log, tasklab = buf_x[idx], buf_log[idx], buf_tl[idx]
-            if(remainder > 0):
-                first = min(ex.shape[0], examples_per_task + 1)
-                remainder -= 1
-            else:
-                first = min(ex.shape[0], examples_per_task)
-
-            self.buffer.add_data(
-                examples=ex[:first],
-                logits=log[:first],
-                task_labels=tasklab[:first])
-
-    #do some foreward passes to fill up buffer with samples from the current task
-    counter = 0
-    for data in dataset.train_loader:
-        if hasattr(dataset.train_loader.dataset, 'logits'):
-            inputs, _, not_aug_inputs, _ = data
-        else:
-            inputs, _, not_aug_inputs = data
-            
-        inputs = inputs.to(self.device)
-        not_aug_inputs = not_aug_inputs.to(self.device)
-        outputs = self.net(inputs)
-        
-        if self.args.training_setting ==  "class-il":
-            if self.args.temperature <= 100:
-                outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
-            self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
-                                    logits=outputs.detach()[:(examples_per_task - counter)],
-                                    task_labels=(torch.ones(self.args.batch_size, dtype=torch.long) *
-                                                current_task)[:(examples_per_task - counter)])
-        else:
-            outputs = adjust_outputs(outputs, (torch.ones(outputs.shape[0], dtype=torch.long, device=self.device) * self.current_task), self._cpt)
-            if self.args.temperature <= 100:
-                outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
-            self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
-                                    logits=outputs.detach()[:(examples_per_task - counter)],
-                                    task_labels=(torch.ones(self.args.batch_size, dtype=torch.long) *
-                                                current_task)[:(examples_per_task - counter)])
-
-        counter += self.args.batch_size
-        if examples_per_task - counter <= 0:
-            break
-"""

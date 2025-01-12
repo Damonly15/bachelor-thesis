@@ -96,15 +96,12 @@ class ErBalanced(ContinualModel):
         return loss.item()
     
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
-        if self.args.buffer_size == dataset.N_CLASSES: #one sample per class
-            examples_per_class = 1
-            remainder = 0
-        else:
-            examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
-            remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
+
+        examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
+        remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
 
         # fdr reduce coreset
-        if self.current_task > 0:
+        if not self.buffer.is_empty():
             examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
             remainder = self.args.buffer_size % ((self.current_task+1) * self.cpt)
             buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
@@ -131,7 +128,6 @@ class ErBalanced(ContinualModel):
 
         for data in dataset.train_loader:
             inputs, labels, not_aug_inputs = data
-            not_aug_inputs = not_aug_inputs.to(self.device)
             if all(ce == 0):
                 break
 
@@ -148,5 +144,3 @@ class ErBalanced(ContinualModel):
         self.current_task_iterations = 0
         self.args.batch_size = self.overall_batch_size // (self.current_task+2)
         self.args.minibatch_size = self.overall_batch_size - self.args.batch_size
-        _, lab, _ = self.buffer.get_all_data()
-        print(lab)

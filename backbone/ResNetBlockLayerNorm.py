@@ -217,7 +217,28 @@ def resnet34layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
     """
     return ResNetLayerNorm(BasicBlock, [3, 4, 6, 3], nclasses, nf)
 
+
+def resnet18layernorm_nb(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
+    """
+    Instantiates a ResNet18 network.
+
+    Args:
+        nclasses: number of output classes
+        nf: number of filters
+
+    Returns:
+        ResNet network
+    """
+    model = ResNetLayerNorm(BasicBlock, [2, 2, 2, 2], nclasses, nf)
+    model.classifier = nn.Linear(nf * 8 * BasicBlock.expansion, nclasses, bias=False)
+    return model
+
 class CustomGroupNorm(nn.GroupNorm):
     def __init__(self, num_channels):
         # Initialize with num_groups = 1 (in that case group norm is equvalent to layer norm) and provided num_channels
         super(CustomGroupNorm, self).__init__(num_groups=1, num_channels=num_channels)
+
+
+
+
+

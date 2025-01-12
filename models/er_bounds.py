@@ -82,15 +82,12 @@ class ErBounds(ContinualModel):
         return loss.item()
     
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
-        if self.args.buffer_size == dataset.N_CLASSES: #one sample per class
-            examples_per_class = 1
-            remainder = 0
-        else:
-            examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
-            remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
+            
+        examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
+        remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
 
         # fdr reduce coreset
-        if self.current_task > 0:
+        if not self.buffer.is_empty():
             buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
             self.buffer.empty()
 
@@ -115,7 +112,6 @@ class ErBounds(ContinualModel):
 
         for data in dataset.train_loader:
             inputs, labels, not_aug_inputs = data
-            not_aug_inputs = not_aug_inputs.to(self.device)
             if all(ce == 0):
                 break
 
@@ -129,8 +125,6 @@ class ErBounds(ContinualModel):
                                     labels=labels[flags],
                                     task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
 
-        _, lab, _, = self.buffer.get_all_data()
-        print(lab)
 
 """
 old buffer filling

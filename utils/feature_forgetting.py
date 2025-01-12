@@ -1,5 +1,6 @@
 import torch
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 from typing import Tuple
 from torch.nn.functional import avg_pool2d
@@ -21,9 +22,9 @@ def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset, num
     model_status = model.net.training
     model.net.eval()
 
-    heads = [[], [], [], [], []]    #Fit a separate linear head at all layers
+    heads = []    #Separate head for every task
     for k, source in enumerate(all_train_loaders):
-        all_features = [[], [], [], [], []]
+        all_features = []
         all_labels = []
         label_subtraction = (k*dataset.N_CLASSES_PER_TASK)
         for data in source:
@@ -33,34 +34,23 @@ def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset, num
                 inputs, labels, _ = data
 
             inputs = inputs.to(model.device)
-            current_features = (model.net.forward(inputs, returnt="full"))[1]
+            current_features = (model.net.forward(inputs, returnt="features")).detach().cpu()
+            all_features.append(current_features)
             all_labels.append(labels - label_subtraction)
 
-            for layer in range(0, number_layers):
-                current = current_features[layer].detach()
-                current = avg_pool2d(current, current.shape[2])
-                current = current.view(current.size(0), -1)
-                all_features[layer].append(current)
+        all_features = torch.cat(all_features, dim=0)
+        all_labels = torch.cat(all_labels, dim=0)
 
-        for layer in range(0, number_layers):
-            all_features[layer] = torch.cat(all_features[layer], dim=0).cpu()
-        all_labels = torch.cat(all_labels, dim=0).cpu()
+        logreg_model = LogisticRegression(max_iter=7000, C=10) #Use a small regularizer, this makes optimizer converge much faster
+        logreg_model.fit(all_features, all_labels)
+        heads.append(logreg_model)
 
-        for layer in range(0, number_layers):
-            current_features = all_features[layer]
-            logreg_model = LogisticRegression(max_iter=7000, C=10) #Use a small regularizer, this makes optimizer converge much faster
-            logreg_model.fit(current_features, all_labels)
-            heads[layer].append(logreg_model)
-
-
-    full_accuracies = []
-    for layer in range(0, number_layers):
-        full_accuracies.append(evaluate_til(model, dataset, heads[layer], layer))
+    accuracy = evaluate_til(model, dataset, heads)
     model.net.train(model_status)
-    return full_accuracies
+    return accuracy
 
 @torch.no_grad()
-def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads, layer) -> Tuple[list, list]:
+def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads) -> Tuple[list, list]:
     """
     Evaluates the accuracy of the model for each past task in TIL paradigm with a fitted head.
     """
@@ -77,11 +67,7 @@ def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads, layer)
             inputs = inputs.to(model.device)
             
             #do proper forward pass
-            features = (model.net.forward(inputs, returnt="full"))[1][layer]
-            features = avg_pool2d(features, features.shape[2])
-            features = features.view(features.size(0), -1)
-
-            features = features.detach().cpu()
+            features = model.net.forward(inputs, returnt="features").detach().cpu()
             outputs = heads[k].predict_proba(features)
             outputs = torch.from_numpy(outputs)
 
@@ -103,8 +89,7 @@ def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset, num
     model_status = model.net.training
     model.net.eval()
 
-    heads = [] #Fit a linear head at all layers
-    all_features = [[], [], [], [], []]
+    all_features = []
     all_labels = []
     for k, source in enumerate(all_train_loaders):
         for data in source:
@@ -114,57 +99,47 @@ def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset, num
                 inputs, labels, _ = data
 
             inputs = inputs.to(model.device)
-            current_features = (model.net.forward(inputs, returnt="full"))[1]
+            current_features = model.net.forward(inputs, returnt="features").detach().cpu()
+            all_features.append(current_features)
             all_labels.append(labels)
 
-            for layer in range(0, number_layers):
-                current = current_features[layer].detach()
-                current = avg_pool2d(current, current.shape[2])
-                current = current.view(current.size(0), -1)
-                all_features[layer].append(current)
+    all_features = torch.cat(all_features, dim=0)
+    all_labels = torch.cat(all_labels, dim=0)
 
-    for layer in range(0, number_layers):
-        all_features[layer] = torch.cat(all_features[layer], dim=0).cpu()
-    all_labels = torch.cat(all_labels, dim=0).cpu()
+    logreg_model = LogisticRegression(max_iter=7000, C=10) #Use a small regularizer, this makes optimizer converge much faster
+    logreg_model.fit(current_features, all_labels)
 
-    for layer in range(0, number_layers):
-        current_features = all_features[layer]
-        logreg_model = LogisticRegression(max_iter=7000, C=10) #Use a small regularizer, this makes optimizer converge much faster
-        logreg_model.fit(current_features, all_labels)
-        heads.append(logreg_model)
-
-    full_accuracies = []
-    for layer in range(0, number_layers):
-        full_accuracies.append(evaluate_cil(model, dataset, heads[layer], layer))
+    accuracy = evaluate_cil(model, dataset, logreg_model)
     model.net.train(model_status)
-    return full_accuracies
+    return accuracy
 
 @torch.no_grad()
 def feature_forgetting_buffer(model: ContinualModel, dataset: ContinualDataset):
-    all_outputs = []
-
     status = model.net.training
     model.net.eval()
-    buf_x, buf_lab, _ = model.buffer.get_all_data(transform=model.transform)
+    buf_x, buf_lab, _, _ = model.buffer2.get_all_data(transform=model.transform)
 
-    for i in range(0, model.args.buffer_size, model.args.batch_size):
+    all_features = []
+    for i in range(0, buf_x.size(0), model.args.batch_size):
         inputs = buf_x[i: i+model.args.batch_size]
         inputs = inputs.to(model.device)
-        outputs = model.net.forward(inputs, returnt="features").detach().cpu()
-        all_outputs.append(outputs)
-    
+        features = model.net.forward(inputs, returnt="features").detach().cpu()
+        all_features.append(features)
 
-    all_outputs = torch.cat(all_outputs, dim=0)
+    all_features = torch.cat(all_features, dim=0)
 
-    knn = KNeighborsClassifier(n_neighbors=3)
-    knn.fit(all_outputs, buf_lab)
+    head_model = LogisticRegression(max_iter=2000)
+    param_grid = {'C': [0.01, 0.1, 1, 10]}
+    grid = GridSearchCV(head_model, param_grid, cv=5, scoring='accuracy')
+    grid.fit(all_features, buf_lab)
+    head = grid.best_estimator_
     
-    accuracy = evaluate_cil(model, dataset, knn, 1)
+    accuracy = evaluate_cil(model, dataset, head)
     model.net.train(status)
     return accuracy
 
 @torch.no_grad()
-def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head, layer) -> Tuple[list, list]:
+def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head) -> Tuple[list, list]:
     """
     Evaluates the accuracy of the model for each past task in CIL paradigm with a fitted head.
     """
@@ -181,16 +156,11 @@ def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head, layer) 
             inputs = inputs.to(model.device)
             
             #do proper forward pass
-            features = (model.net.forward(inputs, returnt="full"))[1][layer]
-            features = avg_pool2d(features, features.shape[2])
-            features = features.view(features.size(0), -1)
-
-            features = features.detach().cpu()
+            features = (model.net.forward(inputs, returnt="features")).detach().cpu()
             outputs = head.predict_proba(features)
             outputs = torch.from_numpy(outputs)
 
             _, pred = torch.max(outputs, 1)
-            labels = labels
             correct += torch.sum(pred == labels).item()
             total += labels.shape[0]
 

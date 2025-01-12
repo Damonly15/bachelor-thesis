@@ -21,7 +21,7 @@ from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.stats import track_system_stats
 from utils.status import ProgressBar
-from utils.feature_forgetting import feature_forgetting_cil, feature_forgetting_til
+from utils.feature_forgetting import feature_forgetting_cil, feature_forgetting_til, feature_forgetting_buffer
 import time
 
 try:
@@ -210,11 +210,13 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
     if not args.disable_log:
         logger = Logger(args, dataset.SETTING, dataset.NAME, model.NAME)
-        if args.log_feature_forgetting == 'all':
+        if (args.log_feature_forgetting == 'features') or (args.log_feature_forgetting == 'buffer'):
             feature_forgetting_loggers = []
-            number_layers = 5
-            for i in range(0, number_layers):
-                feature_forgetting_loggers.append(Logger(args, dataset.SETTING, dataset.NAME, model.NAME))
+            feature_forgetting_loggers.append(Logger(args, dataset.SETTING, dataset.NAME, model.NAME))
+        elif (args.log_feature_forgetting == 'all'):
+            feature_forgetting_loggers = []
+            feature_forgetting_loggers.append(Logger(args, dataset.SETTING, dataset.NAME, model.NAME))
+            feature_forgetting_loggers.append(Logger(args, dataset.SETTING, dataset.NAME, model.NAME))
 
     model.net.to(model.device)
     torch.cuda.empty_cache()
@@ -339,14 +341,21 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
             log_accs(args, logger, accs, t, dataset.SETTING)
 
-            if (not args.disable_log) and (args.log_feature_forgetting == 'all'):
+            if (not args.disable_log) and ((args.log_feature_forgetting == 'features') or (args.log_feature_forgetting == 'all')):
                 if args.training_setting == 'class-il':
-                    full_accuracies = feature_forgetting_cil(model, dataset, number_layers)
+                    full_accuracies = feature_forgetting_cil(model, dataset)
                 else:
-                    full_accuracies = feature_forgetting_til(model, dataset, number_layers)
-                for i in range(0, number_layers):
-                    current_accuracy = full_accuracies[i], full_accuracies[i]
-                    log_accs(args, feature_forgetting_loggers[i], current_accuracy, t, dataset.SETTING)
+                    full_accuracies = feature_forgetting_til(model, dataset)   
+                full_accuracies = full_accuracies, full_accuracies
+                log_accs(args, feature_forgetting_loggers[0], full_accuracies, t, dataset.SETTING)
+            elif (not args.disable_log) and (args.log_feature_forgetting == 'buffer'):
+                full_accuracies = feature_forgetting_buffer(model, dataset)
+                full_accuracies = full_accuracies, full_accuracies
+                log_accs(args, feature_forgetting_loggers[0], full_accuracies, t, dataset.SETTING)
+            elif (not args.disable_log) and (args.log_feature_forgetting == 'all'):
+                full_accuracies = feature_forgetting_buffer(model, dataset)
+                full_accuracies = full_accuracies, full_accuracies
+                log_accs(args, feature_forgetting_loggers[1], full_accuracies, t, dataset.SETTING)
 
 
             if args.savecheck:
@@ -390,10 +399,13 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         system_tracker.print_stats()
 
     if not args.disable_log:
-        logger.write(vars(args), 'output')
-        if args.log_feature_forgetting == 'all':
-            for i in range(0, number_layers):
-                feature_forgetting_loggers[i].write(vars(args), f'layer_{i}')
+        if (not args.disable_log) and ((args.log_feature_forgetting == 'features') or (args.log_feature_forgetting == 'all')):
+                feature_forgetting_loggers[0].write(vars(args), 'features')
+        elif (not args.disable_log) and (args.log_feature_forgetting == 'buffer'):
+            feature_forgetting_loggers[0].write(vars(args), 'buffer')
+        elif (not args.disable_log) and (args.log_feature_forgetting == 'all'):
+            feature_forgetting_loggers[1].write(vars(args), 'buffer')
+        
         if not args.nowand:
             d = logger.dump()
             d['wandb_url'] = wandb.run.get_url()

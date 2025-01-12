@@ -172,28 +172,11 @@ class ChunkingTinyImagenet(ContinualDataset):
     @staticmethod
     def get_backbone(version):
         num_classes = ChunkingTinyImagenet.N_CLASSES_PER_TASK * ChunkingTinyImagenet.N_TASKS
-        if version == "0":
+        if version == "ResNet18_BN":
+            return resnet18(nclasses = num_classes)
+        elif version == "ResNet18_LN":
             return resnet18layernorm(nclasses = num_classes)
-        elif version == '1':
-            return CnnLN(16, num_classes)
-        elif version == '2':
-            return CnnLN(32, num_classes)
-        elif version == '3':
-            return CnnLN(64, num_classes)
-        elif version == '4':
-            return CnnLN(112, num_classes)
-        elif version == '5':
-            return CnnLN(176, num_classes)
-        elif version == '6':
-            return CnnLN(240, num_classes)
-        elif version == '7':
-            return CnnLN(368, num_classes)
-        elif version == '8':
-            return CnnLN(512, num_classes)
-        elif version == '10':
-            return resnet18(num_classes)
-        elif version == '15':
-            return CnnBN(176, num_classes)
+
 
     @staticmethod
     def get_loss():

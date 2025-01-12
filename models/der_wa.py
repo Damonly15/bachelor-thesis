@@ -27,13 +27,7 @@ class DerWA(ContinualModel):
         super(DerWA, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
 
-        #remove bias parameter
-        with torch.no_grad():
-            in_features = self.net.classifier.in_features
-            out_features = self.net.classifier.out_features
-            self.net.classifier = nn.Linear(in_features, out_features, bias=False)  # New Linear layer without bias
-
-        self.target_classifier = None
+        self.scaling_factor = 1
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         self.opt.zero_grad()
@@ -67,12 +61,26 @@ class DerWA(ContinualModel):
             if self.net.classifier.bias is not None:  # Check if the layer has a bias term
                 self.net.classifier.bias.data.clamp_(min=0)  # Clip bias to be non-negative
 
+            _wandb_old_position = self.current_task * self._cpt
+            _wandb_new_position = _wandb_old_position + self._cpt
+
+            if _wandb_old_position > 0:
+                norms_old = self.net.classifier.weight[0:_wandb_old_position].norm(p=2, dim=1)
+                _wandb_mean_norm_old = norms_old.mean()
+
+            norms_new = self.net.classifier.weight[_wandb_old_position:_wandb_new_position].norm(p=2, dim=1)
+            _wandb_mean_norm_new = norms_new.mean()
+
         return tot_loss
 
     def begin_task(self, dataset):
-        if not self.target_classifier is None:
+        if self.current_task > 1:
+            old_position = (self.current_task-1) * self._cpt
+            new_position = old_position + self._cpt
+            print(f'aligning_{old_position}_{new_position}')
+
             with torch.no_grad(): 
-                self.net.classifier = self.target_classifier
+                self.net.classifier.weight[old_position:new_position] =  (1 / self.scaling) * self.net.classifier.weight[old_position:new_position]
 
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
         tng = self.net.training
@@ -86,7 +94,7 @@ class DerWA(ContinualModel):
             remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
 
         # fdr reduce coreset
-        if self.current_task > 0:
+        if not self.buffer.is_empty():
             buf_x, buf_lab, buf_log, buf_tl = self.buffer.get_all_data()
             self.buffer.empty()
 
@@ -115,7 +123,6 @@ class DerWA(ContinualModel):
                 for data in dataset.train_loader:
                     inputs, labels, not_aug_inputs = data
                     inputs = inputs.to(self.device)
-                    not_aug_inputs = not_aug_inputs.to(self.device)
                     outputs = self.net(inputs)
                     if self.args.temperature <= 100:
                         outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
@@ -131,26 +138,23 @@ class DerWA(ContinualModel):
 
                     self.buffer.add_data(examples=not_aug_inputs[flags],
                                          labels=labels[flags],
-                                         logits=outputs.data[flags],
+                                         logits=((outputs.detach()).cpu())[flags],
                                          task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
 
         self.net.train(tng)
-        _, lab, _, _ = self.buffer.get_all_data()
-        print(lab)
 
         #bias correction
-        if self.current_task != 0:
+        if self.current_task > 0:
             with torch.no_grad():
-                self.target_classifier = copy.deepcopy(self.net.classifier)
                 old_position = self.current_task * self._cpt
                 new_position = old_position + self._cpt
+                print(f'aligning_{old_position}_{new_position}')
 
                 norms_old = self.net.classifier.weight[0:old_position].norm(p=2, dim=1)
                 mean_norm_old = norms_old.mean()
-                print(mean_norm_old)
 
                 norms_new = self.net.classifier.weight[old_position:new_position].norm(p=2, dim=1)
                 mean_norm_new = norms_new.mean()
-                print(mean_norm_new)
 
-                self.net.classifier.weight[old_position:new_position] =  (mean_norm_old / mean_norm_new) * self.net.classifier.weight[old_position:new_position]
+                self.scaling = (mean_norm_old / mean_norm_new)
+                self.net.classifier.weight[old_position:new_position] =  self.scaling * self.net.classifier.weight[old_position:new_position]

@@ -84,8 +84,8 @@ def add_experiment_args(parser: ArgumentParser) -> None:
                            help='Learning rate scheduler milestones (used if `lr_scheduler=multisteplr`).')
     opt_group.add_argument('--sched_multistep_lr_gamma', type=float, default=0.1,
                            help='Learning rate scheduler gamma (used if `lr_scheduler=multisteplr`).')  
-    opt_group.add_argument('--backbone', type=str, default="0", choices=["0", "1", "2", "3", "4", "5", "6", "7", "8", "10", "15"], required=False,
-                           help='Use a different backbone for scaling.')
+    opt_group.add_argument('--backbone', type=str, default="ResNet18_BN", choices=["ResNet18_BN", "ResNet18_LN"], required=False,
+                           help='Which backbone tho use')
 
 
 def add_management_args(parser: ArgumentParser) -> None:
@@ -138,8 +138,8 @@ def add_management_args(parser: ArgumentParser) -> None:
     wandb_group.add_argument('--wandb_entity', type=str, help='Wandb entity')
     wandb_group.add_argument('--wandb_project', type=str, default='mammoth', help='Wandb project name')
     
-    mng_group.add_argument('--log_feature_forgetting', type=str, default="output", choices=["output", "features", "all", "testing"], required=False,
-                            help='Which feature forgetting version to log')
+    mng_group.add_argument('--log_feature_forgetting', type=str, default="output", choices=["output", "features", "buffer", "all"], required=False,
+                            help='Additionally evaluate performance witha fitted head. Either fit head on all seen samples or just on the buffer.')
 
 
 def add_rehearsal_args(parser: ArgumentParser) -> None:

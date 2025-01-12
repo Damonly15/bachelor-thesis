@@ -203,6 +203,20 @@ def resnet18(nclasses: int, nf: int = 64) -> ResNet:
     """
     return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf)
 
+def resnet18_nb(nclasses: int, nf: int = 64) -> ResNet:
+    """
+    Instantiates a ResNet18 network.
+
+    Args:
+        nclasses: number of output classes
+        nf: number of filters
+
+    Returns:
+        ResNet network
+    """
+    model = ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf)
+    model.classifier = nn.Linear(nf * 8 * BasicBlock.expansion, nclasses, bias=False)
+    return model
 
 def resnet34(nclasses: int, nf: int = 64) -> ResNet:
     """
