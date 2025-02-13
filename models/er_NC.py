@@ -98,7 +98,7 @@ class ErNC(ContinualModel):
             nc_loss2 = self.args.alpha * nc_loss1
             nc_loss2.backward()
             tot_loss += nc_loss2.item()
-        #(intra_class - inter_class)**2
+        #(intra_class - inter_class)**2, inter_class var as constant?
         self.opt.step()
 
         return loss.item()

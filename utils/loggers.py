@@ -263,6 +263,8 @@ class Logger:
         """
         wrargs = args.copy()
         wrargs['result_type'] = result_type
+        if 'class_order' in wrargs:
+            del wrargs['class_order'] #don't need how we permuted the classes in the log file. This can get very long if we have many classes.
 
         target_folder = base_path() + "results/"
 

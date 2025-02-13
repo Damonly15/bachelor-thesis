@@ -19,7 +19,7 @@ from utils import random_id
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.status import ProgressBar
-from utils.feature_forgetting import feature_forgetting_cil, feature_forgetting_til, feature_forgetting_buffer
+from utils.feature_forgetting import feature_forgetting, buffer_forgetting
 from utils.NC_metrics import evaluate_NC_metrics, get_test_buffer, log_NC
 
 try:
@@ -60,12 +60,12 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
     """
     status = model.net.training
     model.net.eval()
-    accs, accs_mask_classes = [], []
+    accs = []
     n_classes = dataset.get_offsets()[1]
     for k, test_loader in enumerate(dataset.test_loaders):
         if last and k < len(dataset.test_loaders) - 1:
             continue
-        correct, correct_mask_classes, total = 0.0, 0.0, 0.0
+        correct, total = 0.0, 0.0
         test_iter = iter(test_loader)
         i = 0
         while True:
@@ -77,8 +77,12 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
                 break
             inputs, labels = data
             inputs, labels = inputs.to(model.device), labels.to(model.device)
-            if 'class-il' not in model.COMPATIBILITY and 'general-continual' not in model.COMPATIBILITY:
-                outputs = model(inputs, k)
+            if (model.args.training_setting == 'task-il') and ('task-il' in model.COMPATIBILITY):
+                outputs = model.net.forward(inputs, task_label=k)
+                labels = labels - (k*dataset.N_CLASSES_PER_TASK)
+            elif (model.args.training_setting == 'task-il'):
+                outputs = model(inputs)
+                mask_classes(outputs, dataset, k)
             else:
                 outputs = model(inputs)
 
@@ -87,17 +91,11 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
             total += labels.shape[0]
             i += 1
 
-            if dataset.SETTING == 'class-il':
-                mask_classes(outputs, dataset, k)
-                _, pred = torch.max(outputs.data, 1)
-                correct_mask_classes += torch.sum(pred == labels).item()
-
         accs.append(correct / total * 100
                     if 'class-il' in model.COMPATIBILITY or 'general-continual' in model.COMPATIBILITY else 0)
-        accs_mask_classes.append(correct_mask_classes / total * 100)
 
     model.net.train(status)
-    return accs, accs_mask_classes
+    return accs, accs
 
 
 def initialize_wandb(args: Namespace) -> None:
@@ -145,7 +143,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))
 
     if args.log_NC_metrics:
-        NC_metrics = [[], [], []]
+        NC_metrics = [[], []]
 
     if args.start_from is not None:
         for i in range(args.start_from):
@@ -182,7 +180,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         train_loader, test_loader = dataset.get_data_loaders()
         model.meta_begin_task(dataset)
 
-        if not args.inference_only:
+        if (not args.inference_only) and (not (args.joint and t != end_task-1)): #if joint training last task contains all samples
             if t and args.enable_other_metrics:
                 accs = evaluate(model, dataset, last=True)
                 results[t - 1] = results[t - 1] + accs[0]
@@ -238,25 +236,24 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
         log_accs(args, logger, accs, t, dataset.SETTING)
 
-        if(args.log_feature_forgetting == 'features') or (args.log_feature_forgetting == 'all'):
-            if args.training_setting == 'class-il':
-                full_accuracies = feature_forgetting_cil(model, dataset)
-            else:
-                full_accuracies = feature_forgetting_til(model, dataset)   
-            full_accuracies = full_accuracies, full_accuracies
-            log_accs(args, feature_forgetting_loggers[0], full_accuracies, t, dataset.SETTING)
-
-            if(args.log_feature_forgetting == 'all'):
-                full_accuracies = feature_forgetting_buffer(model, dataset)
-                full_accuracies = full_accuracies, full_accuracies
-                log_accs(args, feature_forgetting_loggers[1], full_accuracies, t, dataset.SETTING)
-        elif (args.log_feature_forgetting == 'buffer'):
-            full_accuracies = feature_forgetting_buffer(model, dataset)
-            full_accuracies = full_accuracies, full_accuracies
-            log_accs(args, feature_forgetting_loggers[0], full_accuracies, t, dataset.SETTING)
+        if(args.log_feature_forgetting == 'features'):
+            full_accuracies = feature_forgetting(model, dataset, args.training_setting)
+            log_accs(args, feature_forgetting_loggers[0], (full_accuracies, full_accuracies), t, dataset.SETTING)
+        elif(args.log_feature_forgetting == 'buffer'):
+            full_accuracies = buffer_forgetting(model, dataset, args.training_setting)
+            log_accs(args, feature_forgetting_loggers[0], (full_accuracies, full_accuracies), t, dataset.SETTING)
+        elif(args.log_feature_forgetting == 'all'):
+            full_accuracies = feature_forgetting(model, dataset, args.training_setting)
+            log_accs(args, feature_forgetting_loggers[0], (full_accuracies, full_accuracies), t, dataset.SETTING)
+            full_accuracies = buffer_forgetting(model, dataset, args.training_setting)
+            log_accs(args, feature_forgetting_loggers[1], (full_accuracies, full_accuracies), t, dataset.SETTING)
 
         if args.log_NC_metrics:
             buffer = model.buffer
+            if hasattr(model, 'extra_buffer') and (not model.extra_buffer.is_empty()): #if we have a hold out buffer we evaluate NC on both buffers
+                extra_buffer = model.extra_buffer
+                buffer = (buffer, extra_buffer)
+                
             c_NC_metrics = evaluate_NC_metrics(model, buffer) #replay buffer
             NC_metrics[0].append(c_NC_metrics[0])
             means = c_NC_metrics[1] #we calculate strong neural collapse. Hence we need the class means of the training dataset.
@@ -264,12 +261,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             buffer = get_test_buffer(model, dataset.test_loaders) #don't apply data augmentation, as samples in the buffer are already augmented
             c_NC_metrics = evaluate_NC_metrics(model, buffer, means, False) #evaluate metric buffer containing test dataset samples
             NC_metrics[1].append(c_NC_metrics[0])
-
-            if hasattr(model, 'extra_buffer'): #evaluate NC on extra buffer which is not used during replay
-                buffer = model.extra_buffer
-                c_NC_metrics = evaluate_NC_metrics(model, buffer, means) #replay buffer
-                NC_metrics[2].append(c_NC_metrics[0])
-
 
         if args.savecheck:
             save_obj = {
@@ -322,8 +313,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     if args.log_NC_metrics:
         log_NC(model, "buffer", NC_metrics[0])
         log_NC(model, "test_dataset", NC_metrics[1])
-        if hasattr(model, 'extra_buffer'):
-            log_NC(model, "extra_buffer", NC_metrics[2])
 
     if not args.nowand:
         wandb.finish()

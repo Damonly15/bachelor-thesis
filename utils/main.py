@@ -171,7 +171,8 @@ def main(args=None):
     else:
         args.minibatch_size = args.batch_size
 
-    backbone = dataset.get_backbone(args.backbone)
+    model_compatibility = get_model(args, None, None, None).COMPATIBILITY
+    backbone = dataset.get_backbone(args, model_compatibility)
     loss = dataset.get_loss()
     model = get_model(args, backbone, loss, dataset.get_transform())
 

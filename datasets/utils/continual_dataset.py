@@ -71,9 +71,9 @@ class ContinualDataset:
         if self.args.validation:
             self._c_seed = self.args.seed if self.args.seed is not None else torch.initial_seed()
 
-        if args.joint:
-            self.N_CLASSES_PER_TASK = self.N_CLASSES
-            self.N_TASKS = 1
+        #if args.joint:
+        #    self.N_CLASSES_PER_TASK = self.N_CLASSES
+        #    self.N_TASKS = 1
 
         if not all((self.NAME, self.SETTING, self.N_CLASSES_PER_TASK, self.N_TASKS, self.SIZE, self.N_CLASSES)):
             raise NotImplementedError('The dataset must be initialized with all the required fields.')
@@ -235,10 +235,12 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
         test_mask = np.logical_and(np.array(test_dataset.targets) >= setting.i,
                                    np.array(test_dataset.targets) < setting.i + setting.N_CLASSES_PER_TASK)
 
-        train_dataset.data = train_dataset.data[train_mask]
+        if not setting.args.joint:
+            train_dataset.data = train_dataset.data[train_mask]
         test_dataset.data = test_dataset.data[test_mask]
 
-        train_dataset.targets = train_dataset.targets[train_mask]
+        if not setting.args.joint:
+            train_dataset.targets = train_dataset.targets[train_mask]
         test_dataset.targets = test_dataset.targets[test_mask]
 
     train_dataset, test_dataset = _prepare_data_loaders(train_dataset, test_dataset, setting)

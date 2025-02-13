@@ -119,13 +119,18 @@ class SequentialCIFAR10(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone(version):
+    def get_backbone(args, model_compatibility):
         num_classes = SequentialCIFAR10.N_CLASSES_PER_TASK * SequentialCIFAR10.N_TASKS
-        if version == "ResNet18_BN":
-            return resnet18(nclasses = num_classes)
-        elif version == "ResNet18_LN":
-            return resnet18layernorm(nclasses = num_classes)
+        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
+            cpt = SequentialCIFAR10.N_CLASSES_PER_TASK #get backbone with different heads
+        else:
+            cpt = -1
 
+        if args.backbone == "ResNet18_LN":
+            return resnet18layernorm(nclasses = num_classes, cpt=cpt)
+        else: 
+            return resnet18(nclasses = num_classes, cpt=cpt)
+        
     @staticmethod
     def get_loss():
         return F.cross_entropy

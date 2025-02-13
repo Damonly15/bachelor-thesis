@@ -111,33 +111,32 @@ class DerBounds(ContinualModel):
             ce[i] += 1 
 
         with torch.no_grad():
-            with bn_track_stats(self.net, False):
-                for data in dataset.train_loader:
-                    inputs, labels, not_aug_inputs = data
-                    inputs = inputs.to(self.device)
-                    outputs = self.net(inputs)
+            for data in dataset.train_loader:
+                inputs, labels, not_aug_inputs = data
+                inputs = inputs.to(self.device)
+                outputs = self.net(inputs)
 
-                    if self.args.training_setting ==  "class-il":
-                        if self.args.temperature <= 100:
-                            outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
-                    else:
-                        outputs = adjust_outputs(outputs, (torch.ones(outputs.shape[0], dtype=torch.int64, device=self.device) * self.current_task), self._cpt)
-                        if self.args.temperature <= 100:
-                            outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
+                if self.args.training_setting ==  "class-il":
+                    if self.args.temperature <= 100:
+                        outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
+                else:
+                    outputs = adjust_outputs(outputs, (torch.ones(outputs.shape[0], dtype=torch.int64, device=self.device) * self.current_task), self._cpt)
+                    if self.args.temperature <= 100:
+                        outputs = F.log_softmax(outputs / self.args.temperature, dim=-1)
 
-                    if all(ce == 0):
-                        break
+                if all(ce == 0):
+                    break
 
-                    flags = torch.zeros(len(inputs)).bool()
-                    for j in range(len(flags)):
-                        if ce[labels[j] % self.cpt] > 0:
-                            flags[j] = True
-                            ce[labels[j] % self.cpt] -= 1
+                flags = torch.zeros(len(inputs)).bool()
+                for j in range(len(flags)):
+                    if ce[labels[j] % self.cpt] > 0:
+                        flags[j] = True
+                        ce[labels[j] % self.cpt] -= 1
 
-                    self.buffer.add_data(examples=not_aug_inputs[flags],
-                                         labels=labels[flags],
-                                         logits=((outputs.detach()).cpu())[flags],
-                                         task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
+                self.buffer.add_data(examples=not_aug_inputs[flags],
+                                        labels=labels[flags],
+                                        logits=((outputs.detach()).cpu())[flags],
+                                        task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
 
         self.net.train(tng)
         return

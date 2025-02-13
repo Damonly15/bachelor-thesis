@@ -11,12 +11,6 @@ from backbone.ResNet18LayerNorm import resnet18layernorm
 from datasets.seq_cifar10 import SequentialCIFAR10
 from datasets.seq_tinyimagenet import SequentialTinyImagenet
 
-
-def adjust_outputs(outputs, class_labels, classes_per_task):
-    indices = classes_per_task * class_labels.unsqueeze(1) + torch.tensor([i for i in range(classes_per_task)], dtype=torch.int64, device=outputs.device)
-    new_outputs = outputs.gather(1, indices)
-    return new_outputs
-
 def get_pretrained(args):
     if args.dataset == "seq-mnist":
         pretrained_model = MNISTMLP(np.prod(SequentialMNIST.SIZE), SequentialMNIST.N_CLASSES)

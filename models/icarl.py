@@ -17,7 +17,7 @@ from utils.buffer import Buffer, fill_buffer, icarl_replay
 
 class ICarl(ContinualModel):
     NAME = 'icarl'
-    COMPATIBILITY = ['class-il', 'task-il']
+    COMPATIBILITY = ['class-il']
 
     @staticmethod
     def get_parser() -> ArgumentParser:

@@ -9,6 +9,8 @@ This module implements the simplest form of incremental training, i.e., finetuni
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser
+from datasets.seq_cifar10 import SequentialCIFAR10
+from datasets.seq_tinyimagenet import SequentialTinyImagenet
 
 
 class Sgd(ContinualModel):
@@ -26,15 +28,26 @@ class Sgd(ContinualModel):
 
     def __init__(self, backbone, loss, args, transform):
         super(Sgd, self).__init__(backbone, loss, args, transform)
+        if args.dataset=='seq-cifar10':
+            self.cpt_dataset = SequentialCIFAR10.N_CLASSES_PER_TASK
+        elif args.dataset=='seq-tinyimg':
+            self.cpt_dataset = SequentialTinyImagenet.N_CLASSES_PER_TASK
+
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
         SGD trains on the current task using the data provided, with no countermeasures to avoid forgetting.
         """
         self.opt.zero_grad()
-        outputs = self.net(inputs)
+        if self.args.training_setting == "class-il":
+            task_labels=None
+        else:
+            task_labels = labels // self.cpt_dataset
+            labels = labels - (task_labels*self.cpt_dataset)
+
+        outputs = self.net.forward(inputs, task_label=task_labels)
         loss = self.loss(outputs, labels)
+
         loss.backward()
         self.opt.step()
-
         return loss.item()

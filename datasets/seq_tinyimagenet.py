@@ -155,12 +155,17 @@ class SequentialTinyImagenet(ContinualDataset):
         return train, test
 
     @staticmethod
-    def get_backbone(version):
+    def get_backbone(args, model_compatibility):
         num_classes = SequentialTinyImagenet.N_CLASSES_PER_TASK * SequentialTinyImagenet.N_TASKS
-        if version == "ResNet18_BN":
-            return resnet18(nclasses = num_classes)
-        elif version == "ResNet18_LN":
-            return resnet18layernorm(nclasses = num_classes)
+        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
+            cpt = SequentialTinyImagenet.N_CLASSES_PER_TASK #get backbone with different heads
+        else:
+            cpt = -1
+
+        if args.backbone == "ResNet18_LN":
+            return resnet18layernorm(nclasses = num_classes, cpt=cpt)
+        else: 
+            return resnet18(nclasses = num_classes, cpt=cpt)
 
 
     @staticmethod
@@ -184,7 +189,7 @@ class SequentialTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 50
+        return 100
 
     @staticmethod
     def get_batch_size():

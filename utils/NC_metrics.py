@@ -12,11 +12,20 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
     ranks = []
     intra_class_var = []
     class_means = []
-
+    
     if augmentation:
-        buf_x, buf_lab, buf_tl = buffer.get_all_data(transform=model.transform)
+        transform = model.transform
     else: #if samples are already augmented, like with the buffer containing the test samples, don't apply any augmentation when retrieving the samples
-        buf_x, buf_lab, buf_tl = buffer.get_all_data()
+        transform = None
+
+    if isinstance(buffer, tuple):
+        buf_x, buf_lab, buf_tl = buffer[0].get_all_data(transform=transform)
+        extra_buf_x, extra_buf_lab, extra_buf_tl = buffer[1].get_all_data(transform=transform)
+        buf_x = torch.cat([buf_x, extra_buf_x], dim=0)
+        buf_lab = torch.cat([buf_lab, extra_buf_lab], dim=0)
+        buf_tl = torch.cat([buf_tl, extra_buf_tl], dim=0)
+    else:
+       buf_x, buf_lab, buf_tl = buffer.get_all_data(transform=transform)
 
     '''
     max_samples = min(model.args.buffer_size // model.N_TASKS, 512)
@@ -35,15 +44,13 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
 
         ranks.append(torch.linalg.matrix_rank(all_features).item())
         '''
-    max_samples = model.args.buffer_size // model.N_CLASSES
     current_intra_class_var = []
-    for tl in buf_lab.unique():
-        idx = tl == buf_lab #evaluate metrics for every class
+    for lab in buf_lab.unique():
+        idx = lab == buf_lab #evaluate metrics for every class
         current_buf_x = buf_x[idx]
-        current_buf_x = current_buf_x[:max_samples]
 
         all_features = []
-        for i in range(0, current_buf_x.size(0), model.args.batch_size):
+        for i in range(0, current_buf_x.shape[0], model.args.batch_size):
             inputs = current_buf_x[i: i+model.args.batch_size]
             inputs = inputs.to(model.device)
             features = model.net.forward(inputs, returnt="features").detach().cpu()
@@ -54,11 +61,11 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
         class_means.append(mean_feature.unsqueeze(0))
 
         if fixed_mean is None:
-            current_intra_class_var.append(calculate_variance(all_features, mean_feature).item())
+            current_intra_class_var.append(calculate_variance(all_features).item())
         else:
-            current_intra_class_var.append(calculate_variance(all_features, fixed_mean[tl]).item())
+            current_intra_class_var.append(calculate_variance(all_features, fixed_mean[lab]).item())
 
-        if((tl%model.cpt)==(model.cpt-1)): #if it is last class of a task
+        if((lab%model.cpt)==(model.cpt-1)): #if it is last class of a task
             intra_class_var.append(sum(current_intra_class_var) / len(current_intra_class_var))
             current_intra_class_var = []
 
@@ -72,37 +79,23 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
     return (intra_class_var, inter_class_var), class_means
 
 def calculate_variance(features, mean=None):
+    bias_correction = 0
     if mean is None:
         mean = torch.mean(features, dim=0)
+        bias_correction = -1 #if the mean is not provided, then we need bias correction
+        
     norms = torch.norm(features - mean, dim=1) ** 2
-    variance = norms.sum() / norms.size(0)
+    variance = norms.sum() / (norms.size(0) + bias_correction)
     return variance
 
 def get_test_buffer(model, test_dataloaders):
-    buffer = Buffer(model.args.buffer_size)
-
-    examples_per_class = model.args.buffer_size // ((model.current_task + 1) * model.cpt)
-    remainder = model.args.buffer_size % ((model.current_task + 1) * model.cpt)
-
-    ce = torch.tensor([examples_per_class] * (model.cpt * (model.current_task + 1))).int()
-    for i in range(remainder):
-        ce[i] += 1 
+    buffer = Buffer(100000) #make sure buffer fits complete test dataset
 
     for (k, dataloader) in enumerate(test_dataloaders):
-        start_pos = model.cpt * k
-        end_pos = model.cpt * (k+1)
-        current_ce = ce[start_pos:end_pos]
         for (inputs, labels) in dataloader: #test dataloader does not shuffle, therefore we always get the same samples in the buffer
-            if not all(current_ce[:] == 0):
-                flags = torch.zeros(len(inputs)).bool()
-                for j in range(len(flags)):
-                    if current_ce[labels[j] % model.cpt] > 0:
-                        flags[j] = True
-                        current_ce[labels[j] % model.cpt] -= 1
-
-                buffer.add_data(examples=inputs[flags],
-                                    labels=labels[flags],
-                                    task_labels=(torch.ones(len(flags), dtype=torch.int64) * k)[flags])
+                buffer.add_data(examples=inputs,
+                                    labels=labels,
+                                    task_labels=(torch.ones(labels.shape[0], dtype=torch.int64) * k))
     return buffer     
 
 def log_NC(model, result_type, NC_metrics):
@@ -115,6 +108,8 @@ def log_NC(model, result_type, NC_metrics):
         
     wrargs = (vars(model.args)).copy()
     wrargs['result_type'] = result_type
+    if 'class_order' in wrargs:
+        del wrargs['class_order'] #don't need how we permuted the classes in the log file. This can get very long if we have many classes.
 
     target_folder = base_path() + "results/"
 
@@ -133,6 +128,6 @@ def log_NC(model, result_type, NC_metrics):
 
     path = target_folder + model.args.training_setting + "/" + model.args.dataset\
         + "/" + model.args.model + "/logs_NC.txt"
-    print("Logging Class-IL results and arguments in " + path)
+    print("Logging NC metrics in " + path)
     with open(path, 'a') as f:
         f.write(str(wrargs) + '\n')

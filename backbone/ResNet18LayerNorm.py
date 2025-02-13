@@ -85,7 +85,7 @@ class ResNetLayerNorm(MammothBackbone):
     """
 
     def __init__(self, block: BasicBlock, num_blocks: List[int],
-                 num_classes: int, nf: int) -> None:
+                 num_classes: int, nf: int, cpt: int) -> None:
         """
         Instantiates the layers of the network.
 
@@ -108,8 +108,11 @@ class ResNetLayerNorm(MammothBackbone):
         self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
-        self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes)
-
+        if cpt==-1:
+            self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes)
+        else:
+            self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt) for i in range(num_classes//cpt)])
+        
         self.feature_dim = nf * 8 * block.expansion
 
     def to(self, device, **kwargs):
@@ -143,7 +146,7 @@ class ResNetLayerNorm(MammothBackbone):
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
-    def forward(self, x: torch.Tensor, returnt='out') -> torch.Tensor:
+    def forward(self, x: torch.Tensor, task_label=None, returnt='out') -> torch.Tensor:
         """
         Compute a forward pass.
 
@@ -172,7 +175,21 @@ class ResNetLayerNorm(MammothBackbone):
         if returnt == 'features':
             return feature
 
-        out = self.classifier(feature)
+        if task_label is None:
+            out = self.classifier(feature)
+        elif torch.is_tensor(task_label):
+            batch_size = feature.shape[0]
+            out = torch.zeros((batch_size, self.classifier[0].out_features), device=x.device)
+
+            unique_labels = torch.unique(task_label)
+            for label_idx in unique_labels:
+                mask = (label_idx == task_label)
+
+                feature_head = feature[mask]
+
+                out[mask] = self.classifier[label_idx](feature_head)
+        else:
+            out = self.classifier[task_label](feature)
 
         if returnt == 'out':
             return out
@@ -190,7 +207,7 @@ class ResNetLayerNorm(MammothBackbone):
         raise NotImplementedError("Unknown return type. Must be in ['out', 'features', 'both', 'full'] but got {}".format(returnt))
 
 
-def resnet18layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
+def resnet18layernorm(nclasses: int, nf: int = 64, cpt: int=-1) -> ResNetLayerNorm:
     """
     Instantiates a ResNet18 network.
 
@@ -201,37 +218,7 @@ def resnet18layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
     Returns:
         ResNet network
     """
-    return ResNetLayerNorm(BasicBlock, [2, 2, 2, 2], nclasses, nf)
-
-
-def resnet34layernorm(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
-    """
-    Instantiates a ResNet34 network.
-
-    Args:
-        nclasses: number of output classes
-        nf: number of filters
-
-    Returns:
-        ResNet network
-    """
-    return ResNetLayerNorm(BasicBlock, [3, 4, 6, 3], nclasses, nf)
-
-
-def resnet18layernorm_nb(nclasses: int, nf: int = 64) -> ResNetLayerNorm:
-    """
-    Instantiates a ResNet18 network.
-
-    Args:
-        nclasses: number of output classes
-        nf: number of filters
-
-    Returns:
-        ResNet network
-    """
-    model = ResNetLayerNorm(BasicBlock, [2, 2, 2, 2], nclasses, nf)
-    model.classifier = nn.Linear(nf * 8 * BasicBlock.expansion, nclasses, bias=False)
-    return model
+    return ResNetLayerNorm(BasicBlock, [2, 2, 2, 2], nclasses, nf, cpt)
 
 class CustomGroupNorm(nn.GroupNorm):
     def __init__(self, num_channels):

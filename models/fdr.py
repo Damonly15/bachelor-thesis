@@ -26,23 +26,26 @@ class Fdr(ContinualModel):
     def __init__(self, backbone, loss, args, transform):
         super(Fdr, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
-        self.i = 0
         self.soft = torch.nn.Softmax(dim=1)
         self.logsoft = torch.nn.LogSoftmax(dim=1)
 
     def end_task(self, dataset):
+        tng = self.net.training
+        self.net.train()
+
         examples_per_task = self.args.buffer_size // self.current_task if self.current_task > 0 else self.args.buffer_size
 
         if self.current_task > 0:
-            buf_x, buf_log, buf_tl = self.buffer.get_all_data()
+            buf_x, buf_lab, buf_log, buf_tl = self.buffer.get_all_data()
             self.buffer.empty()
 
             for ttl in buf_tl.unique():
                 idx = (buf_tl == ttl)
-                ex, log, tasklab = buf_x[idx], buf_log[idx], buf_tl[idx]
+                ex, lab, log, tasklab = buf_x[idx], buf_lab[idx], buf_log[idx], buf_tl[idx]
                 first = min(ex.shape[0], examples_per_task)
                 self.buffer.add_data(
                     examples=ex[:first],
+                    labels=lab[:first],
                     logits=log[:first],
                     task_labels=tasklab[:first]
                 )
@@ -51,32 +54,52 @@ class Fdr(ContinualModel):
             for i, data in enumerate(dataset.train_loader):
                 inputs, labels, not_aug_inputs = data
                 inputs = inputs.to(self.device)
-                not_aug_inputs = not_aug_inputs.to(self.device)
-                outputs = self.net(inputs)
+                if self.args.training_setting == 'class-il':
+                    task_label = None
+                else:
+                    task_label = self.current_task
+                outputs = self.net.forward(inputs, task_label)
+                                    
                 if examples_per_task - counter < 0:
                     break
                 self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
-                                     logits=outputs.data[:(examples_per_task - counter)],
-                                     task_labels=(torch.ones(self.args.batch_size) *
-                                                  self.current_task)[:(examples_per_task - counter)])
+                                    labels=labels[:(examples_per_task - counter)],
+                                    logits=(outputs.detach().cpu())[:(examples_per_task - counter)],
+                                    task_labels=(torch.ones(self.args.batch_size, dtype=torch.int64) * self.current_task)
+                                                [:(examples_per_task - counter)])
                 counter += self.args.batch_size
 
+        self.net.train(tng)
+        return
+
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
-        self.i += 1
-
+        batch_size = labels.shape[0]
         self.opt.zero_grad()
-        outputs = self.net(inputs)
-        loss = self.loss(outputs, labels)
-        loss.backward()
-        self.opt.step()
-        if not self.buffer.is_empty():
-            self.opt.zero_grad()
-            buf_inputs, buf_logits, _ = self.buffer.get_data(self.args.minibatch_size,
-                                                             transform=self.transform, device=self.device)
-            buf_outputs = self.net(buf_inputs)
-            loss = torch.norm(self.soft(buf_outputs) - self.soft(buf_logits), 2, 1).mean()
-            assert not torch.isnan(loss)
-            loss.backward()
-            self.opt.step()
+        tot_loss = 0
 
-        return loss.item()
+        if self.args.training_setting == 'class-il':
+            task_labels = None
+        else: 
+            task_labels = torch.ones(batch_size,  dtype=torch.int64, device=self.device) * self.current_task
+            labels = labels - (task_labels*self.cpt)
+
+        if not self.buffer.is_empty():
+            buf_inputs, _, buf_logits, buf_tasklabels = self.buffer.get_data(self.args.minibatch_size,
+                                                            transform=self.transform, device=self.device)
+            inputs=torch.cat((inputs, buf_inputs), dim=0)
+            if self.args.training_setting == 'task-il':
+                task_labels = torch.cat((task_labels, buf_tasklabels), dim=0)
+
+        outputs = self.net.forward(inputs, task_label=task_labels)
+
+        if not self.buffer.is_empty():
+            loss_mse = torch.norm(outputs[batch_size:] - buf_logits, 2, 1).mean()
+            loss_mse.backward(retain_graph=True)
+            tot_loss += loss_mse.item()
+
+        loss = self.loss(outputs[:batch_size], labels)
+        loss.backward()
+        tot_loss += loss.item()  
+
+        self.opt.step()
+        return tot_loss

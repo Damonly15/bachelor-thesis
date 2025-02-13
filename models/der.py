@@ -12,7 +12,7 @@ from utils.buffer import Buffer
 
 class Der(ContinualModel):
     NAME = 'der'
-    COMPATIBILITY = ['class-il', 'domain-il', 'task-il', 'general-continual']
+    COMPATIBILITY = ['class-il', 'domain-il', 'general-continual']
 
     @staticmethod
     def get_parser() -> ArgumentParser:
