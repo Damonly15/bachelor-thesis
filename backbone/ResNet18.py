@@ -113,6 +113,7 @@ class ResNet(MammothBackbone):
         else:
             self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt) for i in range(num_classes//cpt)])
         
+        self.feature_dim = nf * 8 * block.expansion
 
     def to(self, device, **kwargs):
         self.device = device

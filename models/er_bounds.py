@@ -102,7 +102,10 @@ class ErBounds(ContinualModel):
         ce = (ce + remainder[self.n_past_classes:]).int() 
 
         for data in dataset.train_loader:
-            inputs, labels, not_aug_inputs = data
+            if hasattr(dataset, 'supconaugmentations'): 
+                    inputs, labels, inputs2, not_aug_inputs = data
+            else: inputs, labels, not_aug_inputs = data
+            
             if all(ce == 0):
                 break
 

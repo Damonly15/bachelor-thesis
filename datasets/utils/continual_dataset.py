@@ -6,6 +6,9 @@
 from argparse import Namespace
 from typing import Tuple
 
+
+import torchvision.transforms as transforms
+
 import torch
 import numpy as np
 import torch.nn as nn
@@ -13,6 +16,14 @@ import torch.optim.lr_scheduler as scheds
 from torch.utils.data import DataLoader, Dataset
 
 from utils.conf import create_seeded_dataloader
+
+# class TwoCropTransform:
+#     """Create two crops of the same image"""
+#     def __init__(self, transform):
+#         self.transform = transform
+
+#     def __call__(self, x):
+#         return torch.cat([self.transform(x).unsqueeze(0), self.transform(x).unsqueeze(0)], dim=0)
 
 
 class ContinualDataset:
@@ -39,6 +50,8 @@ class ContinualDataset:
     N_TASKS: int
     N_CLASSES: int
     SIZE: Tuple[int]
+    MEAN: Tuple[float]
+    STD: Tuple[float]
     AVAIL_SCHEDS = ['multisteplr']
 
     def __init__(self, args: Namespace) -> None:
@@ -70,6 +83,24 @@ class ContinualDataset:
 
         if self.args.validation:
             self._c_seed = self.args.seed if self.args.seed is not None else torch.initial_seed()
+
+        if args.model=="supcon":
+            # modify the transformation to add augmentations
+            augmentations = transforms.Compose([
+                transforms.Resize(size=self.SIZE),
+                transforms.RandomResizedCrop(size=self.SIZE, scale=(0.1 if self.NAME=='seq-tinyimg' else 0.2, 1.)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomApply([
+                    transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+                ], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=self.SIZE[0]//20*2+1, sigma=(0.1, 2.0))], p=0.5 if self.SIZE[0]>32 else 0.0),
+                transforms.ToTensor(),
+                transforms.Normalize(self.MEAN, self.STD),
+            ])
+            self.TRANSFORM = augmentations 
+            self.supconaugmentations = True
+            
 
         #if args.joint:
         #    self.N_CLASSES_PER_TASK = self.N_CLASSES
@@ -194,7 +225,6 @@ def _prepare_data_loaders(train_dataset, test_dataset, setting: ContinualDataset
         train_dataset.targets[setting.unlabeled_mask] = -1  # -1 is the unlabeled class
 
     return train_dataset, test_dataset
-
 
 def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
                          setting: ContinualDataset) -> Tuple[DataLoader, DataLoader]:

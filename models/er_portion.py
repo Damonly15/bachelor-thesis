@@ -131,7 +131,9 @@ class ErPortion(ContinualModel):
         ce2 = (ce2 + remainder_extra[self.n_past_classes:]).int()
 
         for data in dataset.train_loader:
-            inputs, labels, not_aug_inputs = data
+            if hasattr(dataset, 'supconaugmentations'): 
+                    inputs, labels, inputs2, not_aug_inputs = data
+            else: inputs, labels, not_aug_inputs = data
             
             if not (all(ce == 0) and all(ce2 == 0)):
                 flags = torch.zeros(len(inputs)).bool()

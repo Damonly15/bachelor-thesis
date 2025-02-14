@@ -178,6 +178,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     for t in range(start_task, end_task):
         model.net.train()
         train_loader, test_loader = dataset.get_data_loaders()
+
         model.meta_begin_task(dataset)
 
         if (not args.inference_only) and (not (args.joint and t != end_task-1)): #if joint training last task contains all samples
@@ -208,6 +209,12 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                         not_aug_inputs = not_aug_inputs.to(model.device)
                         logits = logits.to(model.device)
                         loss = model.meta_observe(inputs, labels, not_aug_inputs, logits, epoch=epoch)
+                    elif hasattr(dataset, 'supconaugmentations'): 
+                        inputs1, labels, inputs2, not_aug_img = data
+                        inputs = torch.cat([inputs1, inputs2], dim=0)
+                        inputs = inputs.to(model.device)
+                        labels = labels.to(model.device, dtype=torch.long)
+                        loss = model.meta_observe(inputs, labels, not_aug_img, epoch=epoch)
                     else:
                         inputs, labels, not_aug_inputs = data
                         inputs, labels = inputs.to(model.device), labels.to(model.device, dtype=torch.long)

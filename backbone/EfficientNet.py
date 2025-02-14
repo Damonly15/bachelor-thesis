@@ -737,7 +737,7 @@ class EfficientNet(MammothBackbone):
         if self._global_params.include_top:
             self._dropout = nn.Dropout(self._global_params.dropout_rate)
             self.classifier = nn.Linear(out_channels, self._global_params.num_classes)
-
+            self.feature_dim = out_channels
         # set activation to memory efficient swish by default
         self._swish = MemoryEfficientSwish()
 

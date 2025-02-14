@@ -146,6 +146,9 @@ class ResNet(MammothBackbone):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.classifier = nn.Linear(512 * block.expansion, num_classes)
 
+
+        self.feature_dim = 512 * block.expansion
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(

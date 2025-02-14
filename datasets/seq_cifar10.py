@@ -34,9 +34,10 @@ class MyCIFAR10(CIFAR10):
     """
 
     def __init__(self, root, train=True, transform=None,
-                 target_transform=None, download=False) -> None:
+                 target_transform=None, download=False, supcon=False) -> None:
         self.not_aug_transform = transforms.Compose([transforms.ToTensor()])
         self.root = root
+        self.supcon = supcon
         super(MyCIFAR10, self).__init__(root, train, transform, target_transform, download=not self._check_integrity())
 
     def __getitem__(self, index: int) -> Tuple[Image.Image, int, Image.Image]:
@@ -58,13 +59,18 @@ class MyCIFAR10(CIFAR10):
         not_aug_img = self.not_aug_transform(original_img)
 
         if self.transform is not None:
-            img = self.transform(img)
+            img1 = self.transform(img)
+            if self.supcon:
+                img2 = self.transform(img)
 
         if self.target_transform is not None:
             target = self.target_transform(target)
 
         if hasattr(self, 'logits'):
             return img, target, not_aug_img, self.logits[index]
+        
+        if self.supcon:
+            return img1, target, img2, not_aug_img
 
         return img, target, not_aug_img
 
@@ -105,7 +111,7 @@ class SequentialCIFAR10(ContinualDataset):
             [transforms.ToTensor(), self.get_normalization_transform()])
 
         train_dataset = MyCIFAR10(base_path() + 'CIFAR10', train=True,
-                                  download=True, transform=transform)
+                                  download=True, transform=transform, supcon=self.supconaugmentations)
         test_dataset = TCIFAR10(base_path() + 'CIFAR10', train=False,
                                 download=True, transform=test_transform)
 

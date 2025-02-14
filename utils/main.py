@@ -9,6 +9,11 @@ The script performs the following tasks:
 - Trains the model using the `train()` function.
 
 To run the script, execute it directly or import it as a module and call the `main()` function.
+
+Running command: 
+
+CUDA_VISIBLE_DEVICES=3 python utils/main.py --dataset seq-cifar10 --model supcon --lr=0.1 --buffer_size=50   --seed=1000 --n_epochs=1 --log_NC_metrics=1 --temperature 0.1 --asym --training_setting task-il
+
 """
 # Copyright 2022-present, Lorenzo Bonicelli, Pietro Buzzega, Matteo Boschini, Angelo Porrello, Simone Calderara.
 # All rights reserved.
@@ -33,6 +38,7 @@ sys.path.append(mammoth_path + '/datasets')
 sys.path.append(mammoth_path + '/backbone')
 sys.path.append(mammoth_path + '/models')
 
+from models import get_model_class
 from utils import create_if_not_exists, custom_str_underscore
 from utils.args import add_management_args, add_experiment_args
 from utils.conf import base_path
@@ -171,7 +177,7 @@ def main(args=None):
     else:
         args.minibatch_size = args.batch_size
 
-    model_compatibility = get_model(args, None, None, None).COMPATIBILITY
+    model_compatibility = get_model_class(args).COMPATIBILITY
     backbone = dataset.get_backbone(args, model_compatibility)
     loss = dataset.get_loss()
     model = get_model(args, backbone, loss, dataset.get_transform())

@@ -4,7 +4,7 @@ from utils import create_if_not_exists
 from utils.conf import base_path
 from utils.buffer import Buffer
 
-@torch.no_grad
+@torch.no_grad()
 def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
     status = model.net.training
     model.net.eval()

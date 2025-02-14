@@ -37,6 +37,7 @@ class MNISTMLP(MammothBackbone):
             self.fc2,
             nn.ReLU(),
         )
+        self.feature_dim=100
         self.classifier = nn.Linear(100, self.output_size)
         self.net = nn.Sequential(self._features, self.classifier)
         self.reset_parameters()

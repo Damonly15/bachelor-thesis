@@ -40,7 +40,7 @@ def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset):
         all_labels = []
         label_subtraction = (k*dataset.N_CLASSES_PER_TASK)
         for data in source:
-            if hasattr(dataset.train_loader.dataset, 'logits'):
+            if hasattr(dataset.train_loader.dataset, 'logits') or hasattr(dataset, 'supconaugmentations'):
                 inputs, labels, _, _ = data
             else:
                 inputs, labels, _ = data
@@ -220,7 +220,7 @@ def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head) -> Tupl
         accs.append(correct / total * 100)
     return accs
 
-@torch.no_grad
+@torch.no_grad()
 def extra_metric(model: ContinualModel, head):
     probabilities_network = []
     probabilities_refitted = []
