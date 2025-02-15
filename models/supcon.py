@@ -133,45 +133,50 @@ class SupCon(ErBounds):
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
-        ER trains on the current task using the data provided, but also augments the batch with data from the buffer.
+        ER training on the current task using the data provided, and data from the buffer. We add contrastive learning by augmenting twice the input. 
         """
 
         self.opt.zero_grad()
+
+
+        bsz = labels.shape[0]
+        # the inputs have been transformed twice by the dataloader so to get the two different views we need to split them 
+        input1, input2 = torch.split(inputs, [bsz, bsz], dim=0)
+        full_input1 = input1; full_input2 = input2
+
+        if self.args.training_setting == 'class-il': task_labels = None
+        else: task_labels = torch.ones(labels.shape[0],  dtype=torch.int64, device=self.device) * self.current_task
+        full_task_labels = task_labels; full_labels = labels
+
         if not self.buffer.is_empty():
+            # we add to inputs, labels and task_labels the contribution of the buffer 
+            # first we augment all the buffer samples creating two views 
             buf_inputs, buf_labels, buf_tasklabels = self.buffer.get_data(
                 self.args.minibatch_size, transform=None, device=self.device)
             buf_bsz = buf_inputs.shape[0]
-            buf_inputs_1 = torch.cat([self.dataset.TRANSFORM(self.to_pil(b)).unsqueeze(0) for b in buf_inputs],dim=0)
-            buf_inputs_2 = torch.cat([self.dataset.TRANSFORM(self.to_pil(b)).unsqueeze(0) for b in buf_inputs],dim=0)
+            buf_inputs_1 = torch.cat([self.dataset.TRANSFORM(self.to_pil(b)).unsqueeze(0) 
+                                      for b in buf_inputs],dim=0)
+            buf_inputs_2 = torch.cat([self.dataset.TRANSFORM(self.to_pil(b)).unsqueeze(0) 
+                                      for b in buf_inputs],dim=0)
             buf_inputs_1 = buf_inputs_1.to(self.device); buf_inputs_2 = buf_inputs_2.to(self.device)
-            outputs_buf, features_buf = self.net(torch.cat([buf_inputs_1,buf_inputs_2], dim=0), task_label=buf_tasklabels if not self.args.training_setting == 'class-il' else None,returnt='supcon')
-            f_buf_1, f_buf_2 = torch.split(features_buf, [buf_bsz, buf_bsz], dim=0)
-            features_buf = torch.cat([f_buf_1.unsqueeze(1), f_buf_2.unsqueeze(1)], dim=1)
+            full_input1 = torch.cat([input1, buf_inputs_1], dim=0)
+            full_input2 = torch.cat([input2, buf_inputs_2], dim=0)
+            full_labels = torch.cat([labels, buf_labels], dim=0)
+            if self.args.training_setting != 'class-il':
+                full_task_labels = torch.cat([task_labels, buf_tasklabels], dim=0)
+            bsz += buf_bsz
+
+
+
+        # forward pass 
+        full_outputs1, f1 = self.net(full_input1, task_label=full_task_labels ,returnt='supcon')
+        _, f2 = self.net(full_input2, task_label=full_task_labels, returnt='supcon')
             
-        bsz = labels.shape[0]
-
-        if self.args.training_setting == 'class-il':
-            task_labels = None
-        else:  
-            task_labels = torch.ones(labels.shape[0],  dtype=torch.int64, device=self.device) * self.current_task
-
-        outputs, features = self.net(inputs, task_label=task_labels, returnt='supcon')
-
-        if not self.buffer.is_empty():
-            if self.args.training_setting == 'class-il': tl = None
-            else: tl = torch.cat([task_labels, buf_tasklabels])
-            supervised_loss = self.supervised_loss(torch.cat([outputs[:bsz], outputs_buf[:buf_bsz]]), torch.cat([labels, buf_labels]), tl)
-        else:
-            supervised_loss = self.supervised_loss(outputs[:bsz], labels, task_labels)
+        supervised_loss = self.supervised_loss(full_outputs1, full_labels, full_task_labels)
 
         # contrastive loss 
-        f1, f2 = torch.split(features, [bsz, bsz], dim=0)
         features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-        if not self.buffer.is_empty():
-            features = torch.cat([features, features_buf], dim=0)
-            labels = torch.cat([labels, buf_labels], dim=0)
-            bsz += self.args.minibatch_size
-        contrastive_loss = self.contrastive_loss(features, labels, batch_size=bsz)
+        contrastive_loss = self.contrastive_loss(features, full_labels, batch_size=bsz)
 
         loss= self.alpha * supervised_loss + contrastive_loss 
         loss.backward()

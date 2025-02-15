@@ -86,7 +86,9 @@ class MyTinyImagenet(TinyImagenet):
     """Overrides the TinyImagenet dataset to change the getitem function."""
 
     def __init__(self, root: str, train: bool = True, transform: Optional[nn.Module] = None,
-                 target_transform: Optional[nn.Module] = None, download: bool = False) -> None:
+                 target_transform: Optional[nn.Module] = None, download: bool = False, supcon=False) -> None:
+        
+        self.supcon = supcon
         super(MyTinyImagenet, self).__init__(
             root, train, transform, target_transform, download)
 
@@ -101,13 +103,18 @@ class MyTinyImagenet(TinyImagenet):
         not_aug_img = self.not_aug_transform(original_img)
 
         if self.transform is not None:
-            img = self.transform(img)
+            img1 = self.transform(img)
+            if self.supcon:
+                img2 = self.transform(img)
 
         if self.target_transform is not None:
             target = self.target_transform(target)
 
         if hasattr(self, 'logits'):
             return img, target, not_aug_img, self.logits[index]
+        
+        if self.supcon:
+            return img1, target, img2, not_aug_img
 
         return img, target, not_aug_img
 
@@ -145,9 +152,23 @@ class SequentialTinyImagenet(ContinualDataset):
 
         test_transform = transforms.Compose(
             [transforms.ToTensor(), self.get_normalization_transform()])
+        
+        if self.supconaugmentations:
+            transform = transforms.Compose([
+                transforms.Resize(size=self.SIZE),
+                transforms.RandomResizedCrop(size=self.SIZE, scale=(0.1 if self.NAME=='seq-tinyimg' else 0.2, 1.)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomApply([
+                    transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+                ], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=self.SIZE[0]//20*2+1, sigma=(0.1, 2.0))], p=0.5 if self.SIZE[0]>32 else 0.0),
+                transforms.ToTensor(),
+                transforms.Normalize(self.MEAN, self.STD)
+            ])
 
         train_dataset = MyTinyImagenet(base_path() + 'TINYIMG',
-                                       train=True, download=True, transform=transform)
+                                       train=True, download=True, transform=transform, supcon=self.supconaugmentations)
         test_dataset = TinyImagenet(base_path() + 'TINYIMG',
                                     train=False, download=True, transform=test_transform)
 

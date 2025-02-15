@@ -12,7 +12,7 @@ To run the script, execute it directly or import it as a module and call the `ma
 
 Running command: 
 
-CUDA_VISIBLE_DEVICES=3 python utils/main.py --dataset seq-cifar10 --model supcon --lr=0.1 --buffer_size=50   --seed=1000 --n_epochs=1 --log_NC_metrics=1 --temperature 0.1 --asym --training_setting task-il
+CUDA_VISIBLE_DEVICES=2 python utils/main.py --dataset seq-tinyimg --model supcon --lr=0.1 --buffer_size=50   --seed=1000 --n_epochs=1 --log_NC_metrics=1 --temperature 0.1 --asym --training_setting task-il
 
 """
 # Copyright 2022-present, Lorenzo Bonicelli, Pietro Buzzega, Matteo Boschini, Angelo Porrello, Simone Calderara.

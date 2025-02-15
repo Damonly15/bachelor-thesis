@@ -10,27 +10,29 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'seq_cifar10_tests',
+        'name':'seq_mnist_supcon_asym_sweep',
         'combos': {
-            "dataset": ['seq-cifar10'],
-            "model": ["er_portion"],
-            "buffer_size": [500],
-            "lr": [0.1],
-            #"alpha": [0.3],
+            "dataset": ['seq-mnist'],
+            "model": ["supcon"],
+            "buffer_size": [200],
+            "lr": [0.0001, 0.001, 0.01, 0.1],
+            "alpha": [0.1, 1],
+            "temperature": [0.07, 0.2, 0.5],
             #"beta": [2],
-            "seed": [1000, 2000, 3000],
+            "seed": [11],
             #"enable_other_metrics" : [1],
-            "log_feature_forgetting": ["all"],
-            "log_NC_metrics": [1],
+            #"log_feature_forgetting": ["all"],
+            #"log_NC_metrics": [1],
             "training_setting": ["task-il"],
-            #"n_epochs": [150],
+            "asym": [""],
+            "n_epochs": [1],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
             #"optim_wd": [0.00005],
             #"joint": [1],
             #"eval_epochs": [1],
             #"permute_classes": [1],
-            "portion": [0.05, 0.5, 0.8, 0.9, 1.0]
+            #"portion": [0.05, 0.5, 0.8, 0.9, 1.0]
         },
     },
 ]

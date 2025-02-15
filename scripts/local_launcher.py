@@ -8,6 +8,10 @@ from multiprocessing.pool import ThreadPool
 import argparse
 import signal
 
+mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(mammoth_path)
+sys.path.append(mammoth_path + '/utils')
+
 from utils import smart_joint
 
 global active_jobs
@@ -17,6 +21,14 @@ active_jobs = {}
 completed_jobs = {}
 failed_jobs = {}
 
+""""
+command 
+CUDA_VISIBLE_DEVICES=4 python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_asym_sweep.txt --at_a_time 2 
+CUDA_VISIBLE_DEVICES=5 python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_sym_sweep.txt --at_a_time 2
+CUDA_VISIBLE_DEVICES=6 python scripts/local_launcher.py --file data/jobs/list_seq_mnist_supcon_asym_sweep.txt --at_a_time 2
+CUDA_VISIBLE_DEVICES=7 python scripts/local_launcher.py --file data/jobs/list_seq_mnist_supcon_sym_sweep.txt --at_a_time 2
+
+"""
 
 def parse_args():
     parser = argparse.ArgumentParser()

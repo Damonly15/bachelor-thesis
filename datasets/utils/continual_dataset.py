@@ -86,7 +86,7 @@ class ContinualDataset:
 
         if args.model=="supcon":
             # modify the transformation to add augmentations
-            augmentations = transforms.Compose([
+            augmentations = [
                 transforms.Resize(size=self.SIZE),
                 transforms.RandomResizedCrop(size=self.SIZE, scale=(0.1 if self.NAME=='seq-tinyimg' else 0.2, 1.)),
                 transforms.RandomHorizontalFlip(),
@@ -95,11 +95,14 @@ class ContinualDataset:
                 ], p=0.8),
                 transforms.RandomGrayscale(p=0.2),
                 transforms.RandomApply([transforms.GaussianBlur(kernel_size=self.SIZE[0]//20*2+1, sigma=(0.1, 2.0))], p=0.5 if self.SIZE[0]>32 else 0.0),
-                transforms.ToTensor(),
-                transforms.Normalize(self.MEAN, self.STD),
-            ])
-            self.TRANSFORM = augmentations 
+                transforms.ToTensor()
+            ]
+            if hasattr(self, "MEAN"): 
+                augmentations.append(transforms.Normalize(self.MEAN, self.STD))
+            
+            self.TRANSFORM = transforms.Compose(augmentations) 
             self.supconaugmentations = True
+            print("Supervised contrastive training")
             
 
         #if args.joint:
