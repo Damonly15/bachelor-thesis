@@ -45,7 +45,7 @@ class RotatedMNIST(ContinualDataset):
         return train, test
 
     @staticmethod
-    def get_backbone():
+    def get_backbone(args, model_compatibility):
         return MNISTMLP(28 * 28, RotatedMNIST.N_CLASSES_PER_TASK)
 
     @staticmethod

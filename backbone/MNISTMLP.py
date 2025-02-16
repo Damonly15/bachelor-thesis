@@ -15,7 +15,7 @@ class MNISTMLP(MammothBackbone):
     Designed for the MNIST dataset.
     """
 
-    def __init__(self, input_size: int, output_size: int) -> None:
+    def __init__(self, input_size: int, output_size: int, cpt: int=-1) -> None:
         """
         Instantiates the layers of the network.
 
@@ -37,7 +37,10 @@ class MNISTMLP(MammothBackbone):
             self.fc2,
             nn.ReLU(),
         )
-        self.classifier = nn.Linear(100, self.output_size)
+        if cpt==-1:
+            self.classifier = nn.Linear(100, self.output_size)
+        else:
+            self.classifier = nn.ModuleList([nn.Linear(100, cpt) for i in range(self.output_size//cpt)])
         self.net = nn.Sequential(self._features, self.classifier)
         self.reset_parameters()
 
@@ -47,7 +50,7 @@ class MNISTMLP(MammothBackbone):
         """
         self.net.apply(xavier)
 
-    def forward(self, x: torch.Tensor, returnt='out') -> torch.Tensor:
+    def forward(self, x: torch.Tensor, task_label=None, returnt='out') -> torch.Tensor:
         """
         Compute a forward pass.
 
@@ -64,11 +67,23 @@ class MNISTMLP(MammothBackbone):
         if returnt == 'features':
             return feats
 
-        out = self.classifier(feats)
+        if task_label is None:
+            out = self.classifier(feats)
+        elif torch.is_tensor(task_label):
+            batch_size = feats.shape[0]
+            out = torch.zeros((batch_size, self.classifier[0].out_features), device=feats.device)
+
+            unique_labels = torch.unique(task_label)
+            for label_idx in unique_labels:
+                mask = (label_idx == task_label)
+                feature_head = feats[mask]
+                out[mask] = self.classifier[label_idx](feature_head)
+        else:
+            out = self.classifier[task_label](feats)
 
         if returnt == 'out':
             return out
-        elif returnt == 'all':
+        elif returnt in ['both', 'all']:
             return (out, feats)
 
         raise NotImplementedError("Unknown return type")

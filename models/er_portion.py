@@ -109,7 +109,8 @@ class ErPortion(ContinualModel):
                     task_labels=tasklab[:first]
                 )
 
-            #second buffer
+        #second buffer
+        if not self.extra_buffer.is_empty():
             buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
             self.extra_buffer.empty()
 
@@ -157,8 +158,6 @@ class ErPortion(ContinualModel):
                 break
         
         buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
-        print(buf_lab)
         buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
-        print(buf_lab)
         self.net.train(status)
         return

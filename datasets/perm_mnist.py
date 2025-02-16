@@ -84,7 +84,7 @@ class PermutedMNIST(ContinualDataset):
         return train, test
 
     @staticmethod
-    def get_backbone():
+    def get_backbone(args, model_compatibility):
         return MNISTMLP(np.prod(PermutedMNIST.SIZE), PermutedMNIST.N_CLASSES_PER_TASK)
 
     @staticmethod

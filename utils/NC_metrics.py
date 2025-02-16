@@ -9,8 +9,8 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
     status = model.net.training
     model.net.eval()
 
-    ranks = []
     intra_class_var = []
+    inter_class_var = []
     class_means = []
     
     if augmentation:
@@ -27,23 +27,7 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
     else:
        buf_x, buf_lab, buf_tl = buffer.get_all_data(transform=transform)
 
-    '''
-    max_samples = min(model.args.buffer_size // model.N_TASKS, 512)
-    for tl in buf_tl.unique():
-        idx = tl == buf_tl #evaluate metrics for the dataset of every task
-        current_buf_x = buf_x[idx]
-        current_buf_x = current_buf_x[:max_samples]
 
-        all_features = []
-        for i in range(0, current_buf_x.size(0), model.args.batch_size):
-            inputs = current_buf_x[i: i+model.args.batch_size]
-            inputs = inputs.to(model.device)
-            features = model.net.forward(inputs, returnt="features").detach()
-            all_features.append(features)
-        all_features = torch.cat(all_features, dim=0)
-
-        ranks.append(torch.linalg.matrix_rank(all_features).item())
-        '''
     current_intra_class_var = []
     for lab in buf_lab.unique():
         idx = lab == buf_lab #evaluate metrics for every class
@@ -60,8 +44,10 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
         mean_feature = torch.mean(all_features, dim=0)
         class_means.append(mean_feature.unsqueeze(0))
 
-        if fixed_mean is None:
+        if(fixed_mean is None) and (all_features.shape[0] > 1):
             current_intra_class_var.append(calculate_variance(all_features).item())
+        elif(fixed_mean is None) and (all_features.shape[0] == 1):
+             current_intra_class_var.append(0.0)
         else:
             current_intra_class_var.append(calculate_variance(all_features, fixed_mean[lab]).item())
 
@@ -69,11 +55,19 @@ def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
             intra_class_var.append(sum(current_intra_class_var) / len(current_intra_class_var))
             current_intra_class_var = []
 
-    if fixed_mean is None:
-        class_means = torch.cat(class_means, dim=0)
-        inter_class_var = calculate_variance(class_means).item()
-    else:
-        inter_class_var = calculate_variance(fixed_mean).item()
+            if model.args.training_setting == 'task-il': #calculate inter_class_var separately for the dataset of each task if we are training task il
+                if fixed_mean is None:
+                    current_class_means = torch.cat(class_means[-model.cpt:], dim=0)
+                    inter_class_var.append(calculate_variance(current_class_means).item())
+                else:
+                    inter_class_var.append(calculate_variance(fixed_mean[lab-model.cpt+1:lab+1]).item())
+
+    class_means = torch.cat(class_means, dim=0)
+    if model.args.training_setting == 'class-il':
+        if fixed_mean is None:
+            inter_class_var = [calculate_variance(class_means).item()] * (model.current_task+1)
+        else:
+            inter_class_var = [calculate_variance(fixed_mean).item()] * (model.current_task+1)
 
     model.net.train(status)
     return (intra_class_var, inter_class_var), class_means
@@ -99,7 +93,6 @@ def get_test_buffer(model, test_dataloaders):
     return buffer     
 
 def log_NC(model, result_type, NC_metrics):
-    rank = []
     intra_class_var = []
     inter_class_var = []
     for (c_intra_class_var, c_inter_class_var) in NC_metrics:
@@ -117,8 +110,9 @@ def log_NC(model, result_type, NC_metrics):
         for j, var in enumerate(fa):
             wrargs['intra_class_var_' + str(j + 1) + '_task' + str(i + 1)] = var
         
-    for i, var in enumerate(inter_class_var):
-        wrargs['inter_class_var_task_' + str(i + 1)] = var
+    for i, fa in enumerate(inter_class_var):
+        for j, var in enumerate(fa):
+            wrargs['inter_class_var_' + str(j + 1) + '_task' + str(i + 1)] = var
 
     create_if_not_exists(target_folder + model.args.training_setting)
     create_if_not_exists(target_folder + model.args.training_setting +
