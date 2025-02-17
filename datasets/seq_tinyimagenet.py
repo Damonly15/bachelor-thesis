@@ -111,12 +111,12 @@ class MyTinyImagenet(TinyImagenet):
             target = self.target_transform(target)
 
         if hasattr(self, 'logits'):
-            return img, target, not_aug_img, self.logits[index]
+            return img1, target, not_aug_img, self.logits[index]
         
         if self.supcon:
             return img1, target, img2, not_aug_img
 
-        return img, target, not_aug_img
+        return img1, target, not_aug_img
 
 
 class SequentialTinyImagenet(ContinualDataset):
@@ -153,7 +153,7 @@ class SequentialTinyImagenet(ContinualDataset):
         test_transform = transforms.Compose(
             [transforms.ToTensor(), self.get_normalization_transform()])
         
-        if self.supconaugmentations:
+        if hasattr(self,"supconaugmentations"):
             transform = transforms.Compose([
                 transforms.Resize(size=self.SIZE),
                 transforms.RandomResizedCrop(size=self.SIZE, scale=(0.1 if self.NAME=='seq-tinyimg' else 0.2, 1.)),
@@ -168,7 +168,7 @@ class SequentialTinyImagenet(ContinualDataset):
             ])
 
         train_dataset = MyTinyImagenet(base_path() + 'TINYIMG',
-                                       train=True, download=True, transform=transform, supcon=self.supconaugmentations)
+                                       train=True, download=True, transform=transform, supcon=hasattr(self,"supconaugmentations"))
         test_dataset = TinyImagenet(base_path() + 'TINYIMG',
                                     train=False, download=True, transform=test_transform)
 

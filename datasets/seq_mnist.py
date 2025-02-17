@@ -57,13 +57,13 @@ class MyMNIST(MNIST):
             target = self.target_transform(target)
 
         if hasattr(self, 'logits'):
-            return img, target, not_aug_img, self.logits[index]
+            return img1, target, not_aug_img, self.logits[index]
         
 
         if self.supcon:
             return img1, target, img2, not_aug_img
 
-        return img, target, original_img
+        return img1, target, not_aug_img
 
 
 class SequentialMNIST(ContinualDataset):
@@ -88,7 +88,7 @@ class SequentialMNIST(ContinualDataset):
 
     def get_data_loaders(self) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
         transform = transforms.ToTensor()
-        if self.supconaugmentations:
+        if hasattr(self,"supconaugmentations"):
             transform = transforms.Compose([
                 transforms.Resize(size=self.SIZE),
                 transforms.RandomResizedCrop(size=self.SIZE, scale=(0.1 if self.NAME=='seq-tinyimg' else 0.2, 1.)),
@@ -101,7 +101,7 @@ class SequentialMNIST(ContinualDataset):
                 transforms.ToTensor()
             ])
         train_dataset = MyMNIST(base_path() + 'MNIST',
-                                train=True, download=True, transform=transform, supcon=self.supconaugmentations)
+                                train=True, download=True, transform=transform, supcon=hasattr(self,"supconaugmentations"))
         test_dataset = MNIST(base_path() + 'MNIST',
                              train=False, download=True, transform=transform)
 

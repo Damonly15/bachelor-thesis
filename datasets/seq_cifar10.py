@@ -111,7 +111,7 @@ class SequentialCIFAR10(ContinualDataset):
             [transforms.ToTensor(), self.get_normalization_transform()])
 
         train_dataset = MyCIFAR10(base_path() + 'CIFAR10', train=True,
-                                  download=True, transform=transform, supcon=self.supconaugmentations)
+                                  download=True, transform=transform, supcon=hasattr(self,"supconaugmentations"))
         test_dataset = TCIFAR10(base_path() + 'CIFAR10', train=False,
                                 download=True, transform=test_transform)
 
