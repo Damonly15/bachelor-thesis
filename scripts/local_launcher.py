@@ -23,10 +23,15 @@ failed_jobs = {}
 
 """"
 command 
-CUDA_VISIBLE_DEVICES=4 python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_asym_sweep.txt --at_a_time 2 
-CUDA_VISIBLE_DEVICES=5 python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_sym_sweep.txt --at_a_time 2
-CUDA_VISIBLE_DEVICES=6 python scripts/local_launcher.py --file data/jobs/list_seq_mnist_supcon_asym_sweep.txt --at_a_time 2
-CUDA_VISIBLE_DEVICES=7 python scripts/local_launcher.py --file data/jobs/list_seq_mnist_supcon_sym_sweep.txt --at_a_time 2
+python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_asym_sweep.txt --at_a_time 2 
+python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_sym_sweep.txt --at_a_time 2
+python scripts/local_launcher.py --fil data/jobs/list_seq_tinyimg_supcon_asym_sweep.txt --at_a_time 2 --devices 6 7
+python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_sym_sweep.txt --at_a_time 2 --devices 2 3
+
+
+python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_task-il.txt --at_a_time 2 --devices 4
+
+python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_class-il.txt --at_a_time 2 --devices 5
 
 """
 
@@ -37,11 +42,13 @@ def parse_args():
     parser.add_argument("--at_a_time", type=int, default=1, help="number of jobs to run at a time")
     parser.add_argument("--start_from", type=int, default=0, help="start from job number")
     parser.add_argument("--reverse", action="store_true", help="reverse job order")
+    parser.add_argument("--devices", type=int, nargs='+', help="list of GPU indices to run the jobs on (should be less or equal to at_a_time)")
     args = parser.parse_args()
 
     assert args.at_a_time >= 1, "at_a_time must be at least 1"
     assert args.redundancy >= 1, "redundancy must be at least 1"
     assert args.start_from >= 0, "start_from must be at least 0"
+    assert len(args.devices) <= args.at_a_time, "too many devices provided, extra devices will not be used"
 
     jobs_list = [l for l in open(args.file, "r").read().splitlines() if l.strip() != "" and not l.startswith("#")][args.start_from:] * args.redundancy
     if args.reverse:
@@ -80,12 +87,12 @@ def print_progress(basepath):
 
 
 def run_job(jobdata, basedir, jobname, log=False):
-    job, index = jobdata
+    job, index, device_id = jobdata
     global active_jobs
     global completed_jobs
     global failed_jobs
     with open(smart_joint(basedir, f'{index + 1}.out'), "w") as out, open(smart_joint(basedir, f'{index + 1}.err'), "w") as err:
-        p = subprocess.Popen("python utils/main.py " + job, shell=True, stdout=out, stderr=err)
+        p = subprocess.Popen(f"CUDA_VISIBLE_DEVICES={device_id} python utils/main.py " + job, shell=True, stdout=out, stderr=err)
         active_jobs[index] = (jobname, p.pid)
         p.wait()
 
@@ -100,18 +107,22 @@ def run_job(jobdata, basedir, jobname, log=False):
 def main():
     args, jobs_list, jobname = parse_args()
 
-    print("Running {} jobs".format(len(jobs_list)))
+    devices = args.devices
+    device_count = len(devices)
+
+    print("Running {} jobs on {} devices".format(len(jobs_list), device_count))
     time.sleep(2)
 
     # register signal handler to kill all processes on ctrl+c
-    def signal_handler(sig, frame):
-        print('Killing all processes')
-        if os.name == 'nt':
-            os.system("taskkill /F /T /PID {}".format(os.getpid()))
-        else:
-            os.system("kill -9 -1")
-        sys.exit(0)
-    signal.signal(signal.SIGINT, signal_handler)
+    # giulia: you don't need this, it is very dangerous to kill all processes on a machine. 
+    # def signal_handler(sig, frame):
+    #     print('Killing all processes')
+    #     if os.name == 'nt':
+    #         os.system("taskkill /F /T /PID {}".format(os.getpid()))
+    #     else:
+    #         os.system("kill -9 -1")
+    #     sys.exit(0)
+    # signal.signal(signal.SIGINT, signal_handler)
 
     # create logs directory if it doesn't exist
     if not os.path.exists("logs"):
@@ -126,7 +137,8 @@ def main():
     # create thread pool
     pool = ThreadPool(processes=args.at_a_time)
     run_fn = functools.partial(run_job, basedir=basedir, jobname=jobname)
-    result = pool.map_async(run_fn, [(job, i) for i, job in enumerate(jobs_list)])
+    # we distribute the jobs across available devices in a cyclic way
+    result = pool.map_async(run_fn, [(job, i, devices[i % device_count]) for i, job in enumerate(jobs_list)], chunksize=1)
 
     # wait for all jobs to finish and print progress
     while not result._number_left == 0:
