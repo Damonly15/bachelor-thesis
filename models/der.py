@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from torch.nn import functional as F
+import torch
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser, add_experiment_args, add_management_args, add_rehearsal_args
@@ -12,7 +13,7 @@ from utils.buffer import Buffer
 
 class Der(ContinualModel):
     NAME = 'der'
-    COMPATIBILITY = ['class-il', 'domain-il', 'general-continual']
+    COMPATIBILITY = ['class-il', 'domain-il', 'task-il', 'general-continual']
 
     @staticmethod
     def get_parser() -> ArgumentParser:
@@ -32,20 +33,29 @@ class Der(ContinualModel):
         self.opt.zero_grad()
         tot_loss = 0
 
-        outputs = self.net(inputs)
+        if self.args.training_setting == 'class-il':
+            task_labels = None
+        else: 
+            task_labels = self.current_task
+            labels = labels - (task_labels*self.cpt) 
+        outputs = self.net.forward(inputs, task_label=task_labels)
         loss = self.loss(outputs, labels)
         loss.backward()
         tot_loss += loss.item()
 
         if not self.buffer.is_empty():
-            buf_inputs, buf_logits = self.buffer.get_data(
+            buf_inputs, buf_logits, buf_tasklabels = self.buffer.get_data(
                 self.args.minibatch_size, transform=self.transform, device=self.device)
             buf_outputs = self.net(buf_inputs)
+            if self.args.training_setting == 'class-il':
+                buf_outputs = self.net.forward(buf_inputs, task_label=None)
+            else:
+                buf_outputs = self.net.forward(buf_inputs, task_label=buf_tasklabels)
             loss_mse = self.args.alpha * F.mse_loss(buf_outputs, buf_logits)
             loss_mse.backward()
             tot_loss += loss_mse.item()
 
         self.opt.step()
-        self.buffer.add_data(examples=not_aug_inputs, logits=outputs.data)
+        self.buffer.add_data(examples=not_aug_inputs, logits=outputs.detach(), task_labels=(torch.ones(not_aug_inputs.shape[0], dtype=torch.int64, device=self.device) * self.current_task))
 
         return tot_loss

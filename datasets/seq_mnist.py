@@ -110,8 +110,15 @@ class SequentialMNIST(ContinualDataset):
 
     @staticmethod
     def get_backbone(*args):
-        return MNISTMLP(28 * 28, SequentialMNIST.N_TASKS
-                        * SequentialMNIST.N_CLASSES_PER_TASK)
+        config = args[0]
+        model_compatibility = args[1]
+        num_classes = SequentialMNIST.N_TASKS * SequentialMNIST.N_CLASSES_PER_TASK
+        if (config.training_setting == 'task-il') and ('task-il' in model_compatibility):
+            cpt = SequentialMNIST.N_CLASSES_PER_TASK #get backbone with different heads
+        else:
+            cpt = -1
+
+        return MNISTMLP(input_size=28*28, output_size=num_classes, cpt=cpt)
 
     @staticmethod
     def get_transform():

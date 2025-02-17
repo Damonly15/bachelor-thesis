@@ -110,8 +110,9 @@ class ErPortion(ContinualModel):
                 )
 
             #second buffer
-            buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
-            self.extra_buffer.empty()
+            if not self.extra_buffer.is_empty():
+                buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
+                self.extra_buffer.empty()
 
             for tl in buf_lab.unique():
                 idx = tl == buf_lab
@@ -159,8 +160,6 @@ class ErPortion(ContinualModel):
                 break
         
         buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
-        print(buf_lab)
         buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
-        print(buf_lab)
         self.net.train(status)
         return

@@ -80,8 +80,8 @@ class ErBounds(ContinualModel):
         remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
         ones_indices = torch.randperm(self.n_seen_classes)[:remainder]
         remainder = torch.zeros(self.n_seen_classes)
-        remainder[ones_indices] = 1
-
+        if not self.args.buffer_size == dataset.N_CLASSES: #in this case just use one sample per class
+            remainder[ones_indices] = 1
         # fdr reduce coreset
         if not self.buffer.is_empty():
             buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
