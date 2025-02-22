@@ -220,7 +220,7 @@ class ContinualModel(nn.Module):
         Returns the number of iterations to be used for debugging.
         Default: 3
         """
-        return 5
+        return 10
 
     def begin_task(self, dataset: ContinualDataset) -> None:
         """

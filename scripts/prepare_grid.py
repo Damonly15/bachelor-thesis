@@ -10,14 +10,14 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'seq_cifar_supcon_class-il',
+        'name':'seq_tinyimg_supcon_class-il-permuted',
         'combos': {
-            "dataset": ['seq-cifar10'],
+            "dataset": ['seq-tinyimg'],
             "model": ["supcon"],
-            "buffer_size": [10, 50, 100, 200, 350, 500, 750, 1000, 1500, 2000], #TODO: add inf and 0
-            "lr": [0.01],
-            "alpha": [1],
-            "temperature": [0.5],
+            "buffer_size": [200, 1000, 2000, 3000, 4000, 5000, 7500, 10000, 100000], 
+            "lr": [0.1],
+            "alpha": [1.],
+            "temperature": [0.07],
             #"beta": [2],
             "seed": [1000, 2000, 3000],
             "enable_other_metrics" : [1],
@@ -25,13 +25,14 @@ grid_combinations = [
             "log_NC_metrics": [1],
             "training_setting": ["class-il"],
             #"asym": [""],
-            "n_epochs": [50],
+            "n_epochs": [100],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
             #"optim_wd": [0.00005],
             #"joint": [1],
             #"eval_epochs": [1],
-            #"permute_classes": [1],
+            "permute_classes": [1],
+            #"debug_mode": [1],
             #"portion": [0.05, 0.5, 0.8, 0.9, 1.0]
         },
     },

@@ -143,7 +143,7 @@ def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset):
     all_labels = []
     for k, source in enumerate(all_train_loaders):
         for data in source:
-            if hasattr(dataset.train_loader.dataset, 'logits'):
+            if hasattr(dataset.train_loader.dataset, 'logits') or hasattr(dataset, 'supconaugmentations'):
                 inputs, labels, _, _ = data
             else:
                 inputs, labels, _ = data
@@ -226,7 +226,7 @@ def extra_metric(model: ContinualModel, head):
     probabilities_refitted = []
     for iter in all_train_loaders:
         for data in iter:
-            if hasattr(iter, 'logits'):
+            if hasattr(iter, 'logits') or model.NAME=="supcon":
                 inputs, _, _, _ = data
             else:
                 inputs, _, _ = data

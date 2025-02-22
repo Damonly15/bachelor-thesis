@@ -745,7 +745,7 @@ best_args = {
                                   'minibatch_size': 32,
                                   'batch_size': 32,
                                   'n_epochs': 100}},
-                    'supcon': {200: {'lr': 0.1,
+                'supcon': {200: {'lr': 0.1,
                                  'minibatch_size': 32,
                                  'batch_size': 32,
                                  'n_epochs': 100},

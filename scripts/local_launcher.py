@@ -26,13 +26,14 @@ command
 python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_asym_sweep.txt --at_a_time 2 
 python scripts/local_launcher.py --file data/jobs/list_seq_cifar10_supcon_sym_sweep.txt --at_a_time 2
 python scripts/local_launcher.py --fil data/jobs/list_seq_tinyimg_supcon_asym_sweep.txt --at_a_time 2 --devices 6 7
-python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_sym_sweep.txt --at_a_time 2 --devices 2 3
+python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_sym_sweep_bigbatch_debug.txt --at_a_time 2 --devices 2 3
+python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_asym_sweep_bigbatch_debug.txt --at_a_time 2 --devices 6 7
 
 
-python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_task-il.txt --at_a_time 2 --devices 4
-
-python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_class-il.txt --at_a_time 2 --devices 5
-
+python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_task-il-permuted.txt --at_a_time 4 --devices 2 3
+python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_class-il-permuted.txt --at_a_time 4 --devices 0 1
+python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_class-il-permuted.txt --at_a_time 2 --devices 4 5
+python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_task-il-permuted.txt --at_a_time 2 --devices 6 7
 """
 
 def parse_args():
@@ -92,7 +93,7 @@ def run_job(jobdata, basedir, jobname, log=False):
     global completed_jobs
     global failed_jobs
     with open(smart_joint(basedir, f'{index + 1}.out'), "w") as out, open(smart_joint(basedir, f'{index + 1}.err'), "w") as err:
-        p = subprocess.Popen(f"CUDA_VISIBLE_DEVICES={device_id} python utils/main.py " + job, shell=True, stdout=out, stderr=err)
+        p = subprocess.Popen(f"CUDA_VISIBLE_DEVICES={device_id} python3 utils/main.py " + job, shell=True, stdout=out, stderr=err)
         active_jobs[index] = (jobname, p.pid)
         p.wait()
 
@@ -124,6 +125,7 @@ def main():
     #     sys.exit(0)
     # signal.signal(signal.SIGINT, signal_handler)
 
+
     # create logs directory if it doesn't exist
     if not os.path.exists("logs"):
         os.makedirs("logs")
@@ -137,13 +139,21 @@ def main():
     # create thread pool
     pool = ThreadPool(processes=args.at_a_time)
     run_fn = functools.partial(run_job, basedir=basedir, jobname=jobname)
+
+    def error_handler(exception):
+        print(f'{exception} occurred, terminating pool.')
+        pool.terminate()
+    
     # we distribute the jobs across available devices in a cyclic way
-    result = pool.map_async(run_fn, [(job, i, devices[i % device_count]) for i, job in enumerate(jobs_list)], chunksize=1)
+    result = pool.map_async(run_fn, [(job, i, devices[i % device_count]) for i, job in enumerate(jobs_list)], chunksize=1, error_callback=error_handler)
 
     # wait for all jobs to finish and print progress
     while not result._number_left == 0:
         print_progress(basedir)
         time.sleep(2)
+    
+    pool.close()
+    pool.join()
 
 
 if __name__ == '__main__':
