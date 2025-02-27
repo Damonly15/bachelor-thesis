@@ -8,25 +8,25 @@ from typing import Tuple
 from datasets import ContinualDataset
 from models import ContinualModel
 
-all_train_loaders = []
+all_train_loaders = None
 
 def feature_forgetting(model: ContinualModel, dataset: ContinualDataset, version):
-    all_train_loaders.append(dataset.train_loader)
+    global all_train_loaders  # Declare it as global
+    all_train_loaders = dataset.all_train_loaders[:model.current_task+1]
     if version=='class-il':
-        return feature_forgetting_cil(model, dataset)
+        return feature_forgetting_cil(model, dataset, 'train_dataset')
     else:
-        return feature_forgetting_til(model, dataset)
+        return feature_forgetting_til(model, dataset, 'train_dataset')
     
 def buffer_forgetting(model: ContinualModel, dataset: ContinualDataset, version):
     if version=='class-il':
-        return buffer_forgetting_cil(model, dataset)
+        return feature_forgetting_cil(model, dataset, 'buffer')
     else:
-        return buffer_forgetting_til(model, dataset)
+        return feature_forgetting_til(model, dataset, 'buffer')
     
 
-
 @torch.no_grad()
-def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset):
+def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset, version):
     """
     Evaluate the feature quality at four different layers with a separate head
     """
@@ -35,70 +35,21 @@ def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset):
     model.net.eval()
 
     heads = []    #Separate head for every task
-    for k, source in enumerate(all_train_loaders):
-        all_features = []
-        all_labels = []
-        label_subtraction = (k*dataset.N_CLASSES_PER_TASK)
-        for data in source:
-            if hasattr(dataset.train_loader.dataset, 'logits'):
-                inputs, labels, _, _ = data
-            else:
-                inputs, labels, _ = data
+    all_features, all_labels, all_tasklabels = get_features(model, dataset, version)
 
-            mask = (labels >= label_subtraction)
-            inputs, labels = inputs[mask], labels[mask] #this is needed because icarl adds buffer samples to datastream
-            
-            inputs = inputs.to(model.device)
-            current_features = (model.net.forward(inputs, returnt="features")).detach().cpu()
-            all_features.append(current_features)
-            all_labels.append(labels - label_subtraction)
+    for k in range(model.current_task+1):
+        task_mask = all_tasklabels == k
+        current_features = all_features[task_mask]
+        current_labels = all_labels[task_mask] - k*model.cpt
 
-        all_features = torch.cat(all_features, dim=0)
-        all_labels = torch.cat(all_labels, dim=0)
-        
         logreg_model = LogisticRegression(max_iter=5000, C=10)
-        logreg_model.fit(all_features.numpy(), all_labels.numpy())
+        logreg_model.fit(current_features.numpy(), current_labels.numpy())
         heads.append(logreg_model)
 
     accuracy = evaluate_til(model, dataset, heads)
     model.net.train(model_status)
     return accuracy
 
-@torch.no_grad()
-def buffer_forgetting_til(model: ContinualModel, dataset: ContinualDataset):
-    status = model.net.training
-    model.net.eval()
-    
-    buf_x, buf_lab, buf_tl = model.buffer.get_all_data(transform=model.transform)
-    if hasattr(model, 'extra_buffer') and (not model.extra_buffer.is_empty()): #if we have two buffers, use both to fit the head
-        extra_buf_x, extra_buf_lab, extra_buf_tl = model.extra_buffer.get_all_data(transform=model.transform)
-        buf_x = torch.cat([buf_x, extra_buf_x], dim=0)
-        buf_lab = torch.cat([buf_lab, extra_buf_lab], dim=0)
-        buf_tl = torch.cat([buf_tl, extra_buf_tl], dim=0)
-
-    heads = []
-    for k in range(torch.max(buf_tl, dim=0).values + 1):
-        task_mask = buf_tl == k
-        current_buf_x = buf_x[task_mask]
-
-        all_features = []
-        all_labels = buf_lab[task_mask] - (k*dataset.N_CLASSES_PER_TASK)
-
-        for i in range(0, current_buf_x.shape[0], model.args.batch_size):
-            inputs = current_buf_x[i: i+model.args.batch_size]
-            inputs = inputs.to(model.device)
-            features = model.net.forward(inputs, returnt="features").detach().cpu()
-            all_features.append(features)
-
-        all_features = torch.cat(all_features, dim=0)
-
-        logreg_model = LogisticRegression(max_iter=5000, C=10)
-        logreg_model.fit(all_features.numpy(), all_labels.numpy())
-        heads.append(logreg_model)
-
-    accuracy = evaluate_til(model, dataset, heads)
-    model.net.train(status)
-    return accuracy
 
 @torch.no_grad()
 def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads) -> Tuple[list, list]:
@@ -123,7 +74,7 @@ def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads) -> Tup
             outputs = torch.from_numpy(outputs)
 
             _, pred = torch.max(outputs, 1)
-            labels = labels - (k*dataset.N_CLASSES_PER_TASK)
+            labels = labels - (k*model.cpt)
             correct += torch.sum(pred == labels).item()
             total += labels.shape[0]
 
@@ -131,7 +82,7 @@ def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads) -> Tup
     return accs
 
 @torch.no_grad()
-def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset):
+def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset, version):
     """
     Evaluate the feature quality at four different layers with a common head
     """
@@ -139,57 +90,18 @@ def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset):
     model_status = model.net.training
     model.net.eval()
 
-    all_features = []
-    all_labels = []
-    for k, source in enumerate(all_train_loaders):
-        for data in source:
-            if hasattr(dataset.train_loader.dataset, 'logits'):
-                inputs, labels, _, _ = data
-            else:
-                inputs, labels, _ = data
-
-            inputs = inputs.to(model.device)
-            current_features = model.net.forward(inputs, returnt="features").detach().cpu()
-            all_features.append(current_features)
-            all_labels.append(labels)
-
-    all_features = torch.cat(all_features, dim=0)
-    all_labels = torch.cat(all_labels, dim=0)
+    all_features, all_labels, all_tasklabels = get_features(model, dataset, version)
+    task_mask = all_tasklabels <= model.current_task
+    current_features = all_features[task_mask]
+    current_labels = all_labels[task_mask]
 
     logreg_model = LogisticRegression(max_iter=5000, C=10)
-    logreg_model.fit(all_features.numpy(), all_labels.numpy())
+    logreg_model.fit(current_features.numpy(), current_labels.numpy())
 
     accuracy = evaluate_cil(model, dataset, logreg_model)
     model.net.train(model_status)
     return accuracy
 
-@torch.no_grad()
-def buffer_forgetting_cil(model: ContinualModel, dataset: ContinualDataset):
-    status = model.net.training
-    model.net.eval()
-    
-    buf_x, buf_lab, _ = model.buffer.get_all_data(transform=model.transform)
-    if hasattr(model, 'extra_buffer') and (not model.extra_buffer.is_empty()): #if we have two buffers, use both to fit the head
-        extra_buf_x, extra_buf_lab, _ = model.extra_buffer.get_all_data(transform=model.transform)
-        buf_x = torch.cat([buf_x, extra_buf_x], dim=0)
-        buf_lab = torch.cat([buf_lab, extra_buf_lab], dim=0)
-
-    all_features = []
-    for i in range(0, buf_x.shape[0], model.args.batch_size):
-        inputs = buf_x[i: i+model.args.batch_size]
-        inputs = inputs.to(model.device)
-        features = model.net.forward(inputs, returnt="features").detach().cpu()
-        all_features.append(features)
-
-    all_features = torch.cat(all_features, dim=0)
-
-    logreg_model = LogisticRegression(max_iter=5000, C=10)
-    logreg_model.fit(all_features.numpy(), buf_lab.numpy())
-    
-    accuracy = evaluate_cil(model, dataset, logreg_model)
-
-    model.net.train(status)
-    return accuracy
 
 @torch.no_grad()
 def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head) -> Tuple[list, list]:
@@ -220,6 +132,66 @@ def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head) -> Tupl
         accs.append(correct / total * 100)
     return accs
 
+def get_features(model, dataset, version):
+    #should only be called when network is in eval mode and does not track gradients!
+    if version == 'buffer':
+        buf_x, all_labels, all_tasklabels = [], [], []
+
+        if not model.buffer.is_empty():
+            c_buf_x, c_buf_lab, c_buf_tl = model.buffer.get_all_data(transform=model.transform)
+            buf_x.append(c_buf_x)
+            all_labels.append(c_buf_lab)
+            all_tasklabels.append(c_buf_tl)
+        if hasattr(model, 'extra_buffer') and (not model.extra_buffer.is_empty()):
+            c_buf_x, c_buf_lab, c_buf_tl = model.extra_buffer.get_all_data(transform=model.transform)
+            buf_x.append(c_buf_x)
+            all_labels.append(c_buf_lab,)
+            all_tasklabels.append(c_buf_tl)
+
+        buf_x = torch.cat(buf_x, dim=0)
+        all_labels = torch.cat(all_labels, dim=0)
+        all_tasklabels = torch.cat(all_tasklabels, dim=0)
+
+        all_features = []
+        for i in range(0, buf_x.shape[0], model.args.batch_size):
+            inputs = buf_x[i: i+model.args.batch_size]
+            inputs = inputs.to(model.device)
+            features = model.net.forward(inputs, returnt="features").detach().cpu()
+            all_features.append(features)
+        all_features = torch.cat(all_features, dim=0)
+    elif version == 'train_dataset' or version == 'test_dataset':
+        all_features, all_labels, all_tasklabels = [], [], []
+        
+        if version == 'train_dataset':
+            dataloader = dataset.all_train_loaders
+        else:
+            dataloader = dataset.all_test_loaders
+
+        for current_task, source in enumerate(dataloader):
+            for data in source:
+                if version == 'train_dataset':
+                    if hasattr(dataloader[current_task].dataset, 'logits'):
+                        inputs, labels, _, _ = data
+                    else:
+                        inputs, labels, _ = data
+                else:
+                    inputs, labels = data
+
+                inputs = inputs.to(model.device)
+                current_features = (model.net.forward(inputs, returnt="features")).detach().cpu()
+                all_features.append(current_features)
+                all_labels.append(labels)
+                all_tasklabels.append(torch.ones(labels.shape[0], dtype=torch.int64) * current_task)
+
+        all_features = torch.cat(all_features, dim=0)
+        all_labels = torch.cat(all_labels, dim=0)
+        all_tasklabels = torch.cat(all_tasklabels, dim=0)        
+    else:
+        raise Exception("Something went wrong when getting the features")
+    return all_features, all_labels, all_tasklabels    
+
+#old code
+'''
 @torch.no_grad
 def extra_metric(model: ContinualModel, head):
     probabilities_network = []
@@ -254,8 +226,7 @@ def extra_metric(model: ContinualModel, head):
     print(f'refitted probabilities: {probabilities_refitted}')
 
     return 
-#old code
-'''
+
 @torch.no_grad()
 def evaluate_feature_forgetting_task(model: ContinualModel, dataset: ContinualDataset):
     all_train_loaders.append(dataset.train_loader)

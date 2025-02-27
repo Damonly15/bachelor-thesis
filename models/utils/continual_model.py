@@ -300,13 +300,13 @@ class ContinualModel(nn.Module):
         Wrapper for `end_task` method.
 
         Takes care of updating the internal counters.
+        No this is only done at the end of a task.
 
         Args:
             dataset: the current task's dataset
         """
 
         self.end_task(dataset)
-        self._current_task += 1
 
     @abstractmethod
     def observe(self, inputs: torch.Tensor, labels: torch.Tensor,

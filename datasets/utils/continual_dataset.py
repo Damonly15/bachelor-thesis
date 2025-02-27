@@ -50,6 +50,8 @@ class ContinualDataset:
         """
         self.train_loader = None
         self.test_loaders = []
+        self.all_train_loaders = None
+        self.all_test_loaders = None
         self.i = 0
         self.c_task = -1
         self.args = args

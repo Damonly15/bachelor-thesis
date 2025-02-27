@@ -39,6 +39,8 @@ from utils.conf import base_path
 from utils.distributed import make_dp
 from utils.best_args import best_args
 from utils.conf import set_random_seed
+from utils.checkpoints import mammoth_load_checkpoint
+from utils.training import evaluate
 
 
 def lecun_fix():
@@ -210,7 +212,28 @@ def main(args=None):
     elif args.log_feature_forgetting == 'buffer' and args.buffer_size == 0:
         args.log_feature_forgetting = 'output'
 
-    train(model, dataset, args)
+    #get all dataset
+    dataset_copy = get_dataset(args)
+    all_train_loaders = []
+    all_test_loaders = []
+    for i in range(dataset.N_TASKS):
+        train_loader, test_loader = dataset_copy.get_data_loaders()
+        all_train_loaders.append(train_loader)
+        all_test_loaders.append(test_loader)
+    
+    dataset.all_train_loaders = all_train_loaders
+    dataset.all_test_loaders = all_test_loaders
+
+    load_model(model, dataset, args)
+
+def load_model(model, dataset, args):
+    for i in range(dataset.N_TASKS):
+        args.loadcheck = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{i}.pt'
+        model, past_res = mammoth_load_checkpoint(args, model)
+        model.net.eval()
+        _, _ = dataset.get_data_loaders()
+        print(evaluate(model, dataset))
+    
 
 
 if __name__ == '__main__':

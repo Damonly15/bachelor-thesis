@@ -85,7 +85,7 @@ class ResNet(MammothBackbone):
     """
 
     def __init__(self, block: BasicBlock, num_blocks: List[int],
-                 num_classes: int, nf: int, cpt: int) -> None:
+                 num_classes: int, nf: int, cpt: int, bias=True) -> None:
         """
         Instantiates the layers of the network.
 
@@ -109,9 +109,9 @@ class ResNet(MammothBackbone):
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
         if cpt==-1:
-            self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes)
+            self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes, bias=bias)
         else:
-            self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt) for i in range(num_classes//cpt)])
+            self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt, bias=bias) for i in range(num_classes//cpt)])
         
 
     def to(self, device, **kwargs):
@@ -204,7 +204,7 @@ class ResNet(MammothBackbone):
         raise NotImplementedError("Unknown return type. Must be in ['out', 'features', 'both', 'all'] but got {}".format(returnt))
 
 
-def resnet18(nclasses: int, nf: int = 64, cpt: int=-1) -> ResNet:
+def resnet18(nclasses: int, nf: int = 64, cpt: int=-1, bias=True) -> ResNet:
     """
     Instantiates a ResNet18 network.
 
@@ -215,5 +215,5 @@ def resnet18(nclasses: int, nf: int = 64, cpt: int=-1) -> ResNet:
     Returns:
         ResNet network
     """
-    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, cpt)
+    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, cpt, bias)
 

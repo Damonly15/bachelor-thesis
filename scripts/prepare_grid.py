@@ -13,16 +13,16 @@ grid_combinations = [
         'name':'seq_cifar10_tests',
         'combos': {
             "dataset": ['seq-cifar10'],
-            "model": ["er_portion"],
-            "buffer_size": [500],
+            "model": ['er_portion'],
+            "buffer_size": [200, 500],
             "lr": [0.1],
-            #"alpha": [0.3],
+            #"alpha": [0.1],
             #"beta": [2],
             "seed": [1000, 2000, 3000],
             #"enable_other_metrics" : [1],
-            "log_feature_forgetting": ["all"],
-            "log_NC_metrics": [1],
-            "training_setting": ["task-il"],
+            #"log_feature_forgetting": ["all"],
+            #"log_NC_metrics": [1],
+            "training_setting": ["class-il", "task-il"],
             #"n_epochs": [150],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
@@ -30,7 +30,8 @@ grid_combinations = [
             #"joint": [1],
             #"eval_epochs": [1],
             #"permute_classes": [1],
-            "portion": [0.05, 0.5, 0.8, 0.9, 1.0]
+            "portion": [0, 0.5, 0.8, 0.9, 1.0]
+            #"savecheck": [True]
         },
     },
 ]
