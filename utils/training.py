@@ -268,7 +268,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             if args.buffer_size != 0:
                 NC_metrics[0].append(buffer_metrics + (calculate_mean_distance(buffer_means, test_means[:model.n_seen_classes], model.cpt, 'norm'), calculate_mean_distance(buffer_means, test_means[:model.n_seen_classes], model.cpt, 'cos')))
             NC_metrics[1].append(train_metrics + (calculate_mean_distance(train_means, test_means, model.cpt, 'norm'), calculate_mean_distance(train_means, test_means, model.cpt, 'cos')))
-            NC_metrics[2].append(test_metrics + (calculate_mean_distance(test_means, test_means, model.cpt, 'norm'), calculate_mean_distance(test_means, test_means, model.cpt, 'cos')))
+            if args.buffer_size != 0:
+                NC_metrics[2].append(test_metrics + (calculate_mean_distance(buffer_means, train_means[:model.n_seen_classes], model.cpt, 'norm'), calculate_mean_distance(buffer_means, train_means[:model.n_seen_classes], model.cpt, 'cos')))
+            else:
+                NC_metrics[2].append(test_metrics + (calculate_mean_distance(test_means, test_means, model.cpt, 'norm'), calculate_mean_distance(test_means, test_means, model.cpt, 'cos')))
 
         if args.savecheck:
             save_obj = {

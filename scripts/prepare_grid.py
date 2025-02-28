@@ -10,13 +10,13 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'seq_cifar10_tests',
+        'name':'seq_cifar100_tests',
         'combos': {
-            "dataset": ['seq-cifar10'],
-            "model": ['er_portion'],
-            "buffer_size": [200, 500],
-            "lr": [0.1],
-            #"alpha": [0.1],
+            "dataset": ['seq-cifar100'],
+            "model": ['sgd'],
+            #"buffer_size": [0, 100, 500, 1000, 1500, 2000, 3000, 4000, 5000, 50000],
+            "lr": [0.03],
+            #"alpha": [0.3],
             #"beta": [2],
             "seed": [1000, 2000, 3000],
             #"enable_other_metrics" : [1],
@@ -27,10 +27,10 @@ grid_combinations = [
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
             #"optim_wd": [0.00005],
-            #"joint": [1],
+            "joint": [1],
             #"eval_epochs": [1],
             #"permute_classes": [1],
-            "portion": [0, 0.5, 0.8, 0.9, 1.0]
+            #"portion": [0, 0.5, 0.8, 0.9, 1.0]
             #"savecheck": [True]
         },
     },

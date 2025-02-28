@@ -26,6 +26,9 @@ import datetime
 import uuid
 from argparse import ArgumentParser
 import torch
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(mammoth_path)
@@ -41,6 +44,7 @@ from utils.best_args import best_args
 from utils.conf import set_random_seed
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.training import evaluate
+from utils.feature_forgetting import get_features
 
 
 def lecun_fix():
@@ -227,14 +231,43 @@ def main(args=None):
     load_model(model, dataset, args)
 
 def load_model(model, dataset, args):
+    palette = sns.color_palette("deep")[:2]
+
+
     for i in range(dataset.N_TASKS):
         args.loadcheck = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{i}.pt'
         model, past_res = mammoth_load_checkpoint(args, model)
         model.net.eval()
-        _, _ = dataset.get_data_loaders()
-        print(evaluate(model, dataset))
-    
 
+        """
+        _, _ = dataset.get_data_loaders()
+        dataset.train_loader = dataset.all_train_loaders[:i+1]
+        print(evaluate(model, dataset))
+        """
+        
+        all_features, all_labels, all_tasklabels = get_features(model, dataset, 'train_dataset')
+        task_mask = 2 == all_tasklabels
+        current_features = all_features[task_mask][:200]
+        current_labels = all_labels[task_mask][:200] - 4
+        pca = PCA(n_components=2)
+        reduced_features = pca.fit_transform(current_features)
+
+        # Plot
+        plt.figure(figsize=(4, 4), dpi=1000)
+        if i==2:
+            sns.scatterplot(x=reduced_features[:, 0], y=reduced_features[:, 1], 
+                hue=current_labels, palette=palette, alpha=0.7, legend=True)
+        else:
+            sns.scatterplot(x=reduced_features[:, 0], y=reduced_features[:, 1], 
+                hue=current_labels, palette=palette, alpha=0.7, legend=False)
+
+        plt.xlabel("PC1")
+        if i==0:
+            plt.ylabel("PC2")
+        plt.savefig(mammoth_path + f"/PCA_task{i}.png", dpi=1000)  # Save the plot
+        plt.clf()
+        
+    
 
 if __name__ == '__main__':
     main()
