@@ -1,0 +1,135 @@
+Warning: quadprog not found (GEM and A-GEM will not work)
+Error in model agem
+
+Error in model agem_r
+Error in model gem
+
+[ 03-01 | 15:21 ] Task 1 | epoch 0
+
+Accuracy (epoch 0) for 1 task(s): 	 [Class-IL]: 6.41 % 	 [Task-IL]: 6.41 %
+	Raw accuracy values: Class-IL [6.407766990291262] | Task-IL [6.407766990291262]
+[ 03-01 | 15:21 ] Task 1 | epoch 1
+
+Accuracy (epoch 1) for 1 task(s): 	 [Class-IL]: 8.35 % 	 [Task-IL]: 8.35 %
+	Raw accuracy values: Class-IL [8.349514563106796] | Task-IL [8.349514563106796]
+[ 03-01 | 15:21 ] Task 1 | epoch 2
+
+Accuracy (epoch 2) for 1 task(s): 	 [Class-IL]: 7.18 % 	 [Task-IL]: 7.18 %
+	Raw accuracy values: Class-IL [7.184466019417475] | Task-IL [7.184466019417475]
+[ 03-01 | 15:21 ] Task 1 | epoch 3
+
+Accuracy (epoch 3) for 1 task(s): 	 [Class-IL]: 10.68 % 	 [Task-IL]: 10.68 %
+	Raw accuracy values: Class-IL [10.679611650485436] | Task-IL [10.679611650485436]
+[ 03-01 | 15:22 ] Task 1 | epoch 4
+
+Accuracy (epoch 4) for 1 task(s): 	 [Class-IL]: 15.92 % 	 [Task-IL]: 15.92 %
+	Raw accuracy values: Class-IL [15.922330097087379] | Task-IL [15.922330097087379]
+[ 03-01 | 15:22 ] Task 1 | epoch 5
+
+Accuracy (epoch 5) for 1 task(s): 	 [Class-IL]: 13.2 % 	 [Task-IL]: 13.2 %
+	Raw accuracy values: Class-IL [13.203883495145632] | Task-IL [13.203883495145632]
+[ 03-01 | 15:22 ] Task 1 | epoch 6
+
+Accuracy (epoch 6) for 1 task(s): 	 [Class-IL]: 14.95 % 	 [Task-IL]: 14.95 %
+	Raw accuracy values: Class-IL [14.951456310679612] | Task-IL [14.951456310679612]
+[ 03-01 | 15:22 ] Task 1 | epoch 7
+
+Accuracy (epoch 7) for 1 task(s): 	 [Class-IL]: 15.15 % 	 [Task-IL]: 15.15 %
+	Raw accuracy values: Class-IL [15.145631067961165] | Task-IL [15.145631067961165]
+[ 03-01 | 15:22 ] Task 1 | epoch 8
+
+Accuracy (epoch 8) for 1 task(s): 	 [Class-IL]: 13.59 % 	 [Task-IL]: 13.59 %
+	Raw accuracy values: Class-IL [13.592233009708737] | Task-IL [13.592233009708737]
+[ 03-01 | 15:22 ] Task 1 | epoch 9
+
+Accuracy (epoch 9) for 1 task(s): 	 [Class-IL]: 20.58 % 	 [Task-IL]: 20.58 %
+	Raw accuracy values: Class-IL [20.58252427184466] | Task-IL [20.58252427184466]
+[ 03-01 | 15:22 ] Task 1 | epoch 10
+
+Accuracy (epoch 10) for 1 task(s): 	 [Class-IL]: 18.83 % 	 [Task-IL]: 18.83 %
+	Raw accuracy values: Class-IL [18.83495145631068] | Task-IL [18.83495145631068]
+[ 03-01 | 15:22 ] Task 1 | epoch 11
+
+Accuracy (epoch 11) for 1 task(s): 	 [Class-IL]: 16.7 % 	 [Task-IL]: 16.7 %
+	Raw accuracy values: Class-IL [16.699029126213592] | Task-IL [16.699029126213592]
+[ 03-01 | 15:22 ] Task 1 | epoch 12
+
+Accuracy (epoch 12) for 1 task(s): 	 [Class-IL]: 18.64 % 	 [Task-IL]: 18.64 %
+	Raw accuracy values: Class-IL [18.640776699029125] | Task-IL [18.640776699029125]
+[ 03-01 | 15:22 ] Task 1 | epoch 13
+
+Accuracy (epoch 13) for 1 task(s): 	 [Class-IL]: 18.83 % 	 [Task-IL]: 18.83 %
+	Raw accuracy values: Class-IL [18.83495145631068] | Task-IL [18.83495145631068]
+[ 03-01 | 15:22 ] Task 1 | epoch 14
+
+Accuracy (epoch 14) for 1 task(s): 	 [Class-IL]: 19.03 % 	 [Task-IL]: 19.03 %
+	Raw accuracy values: Class-IL [19.02912621359223] | Task-IL [19.02912621359223]
+[ 03-01 | 15:23 ] Task 1 | epoch 15
+
+Accuracy (epoch 15) for 1 task(s): 	 [Class-IL]: 20.97 % 	 [Task-IL]: 20.97 %
+	Raw accuracy values: Class-IL [20.97087378640777] | Task-IL [20.97087378640777]
+[ 03-01 | 15:23 ] Task 1 | epoch 16
+
+Accuracy (epoch 16) for 1 task(s): 	 [Class-IL]: 17.28 % 	 [Task-IL]: 17.28 %
+	Raw accuracy values: Class-IL [17.281553398058254] | Task-IL [17.281553398058254]
+[ 03-01 | 15:23 ] Task 1 | epoch 17
+
+Accuracy (epoch 17) for 1 task(s): 	 [Class-IL]: 16.5 % 	 [Task-IL]: 16.5 %
+	Raw accuracy values: Class-IL [16.50485436893204] | Task-IL [16.50485436893204]
+[ 03-01 | 15:23 ] Task 1 | epoch 18
+
+Accuracy (epoch 18) for 1 task(s): 	 [Class-IL]: 21.36 % 	 [Task-IL]: 21.36 %
+	Raw accuracy values: Class-IL [21.35922330097087] | Task-IL [21.35922330097087]
+[ 03-01 | 15:23 ] Task 1 | epoch 19
+
+Accuracy (epoch 19) for 1 task(s): 	 [Class-IL]: 22.72 % 	 [Task-IL]: 22.72 %
+	Raw accuracy values: Class-IL [22.718446601941746] | Task-IL [22.718446601941746]
+[ 03-01 | 15:23 ] Task 1 | epoch 20
+
+Accuracy (epoch 20) for 1 task(s): 	 [Class-IL]: 15.92 % 	 [Task-IL]: 15.92 %
+	Raw accuracy values: Class-IL [15.922330097087379] | Task-IL [15.922330097087379]
+[ 03-01 | 15:23 ] Task 1 | epoch 21
+
+Accuracy (epoch 21) for 1 task(s): 	 [Class-IL]: 22.52 % 	 [Task-IL]: 22.52 %
+	Raw accuracy values: Class-IL [22.52427184466019] | Task-IL [22.52427184466019]
+[ 03-01 | 15:23 ] Task 1 | epoch 22
+
+Accuracy (epoch 22) for 1 task(s): 	 [Class-IL]: 26.02 % 	 [Task-IL]: 26.02 %
+	Raw accuracy values: Class-IL [26.019417475728158] | Task-IL [26.019417475728158]
+[ 03-01 | 15:23 ] Task 1 | epoch 23
+
+Accuracy (epoch 23) for 1 task(s): 	 [Class-IL]: 21.17 % 	 [Task-IL]: 21.17 %
+	Raw accuracy values: Class-IL [21.16504854368932] | Task-IL [21.16504854368932]
+[ 03-01 | 15:23 ] Task 1 | epoch 24
+
+Accuracy (epoch 24) for 1 task(s): 	 [Class-IL]: 27.77 % 	 [Task-IL]: 27.77 %
+	Raw accuracy values: Class-IL [27.766990291262132] | Task-IL [27.766990291262132]
+[ 03-01 | 15:24 ] Task 1 | epoch 25
+
+Accuracy (epoch 25) for 1 task(s): 	 [Class-IL]: 13.79 % 	 [Task-IL]: 13.79 %
+	Raw accuracy values: Class-IL [13.78640776699029] | Task-IL [13.78640776699029]
+[ 03-01 | 15:24 ] Task 1 | epoch 26
+
+Accuracy (epoch 26) for 1 task(s): 	 [Class-IL]: 28.35 % 	 [Task-IL]: 28.35 %
+	Raw accuracy values: Class-IL [28.349514563106798] | Task-IL [28.349514563106798]
+[ 03-01 | 15:24 ] Task 1 | epoch 27
+
+Accuracy (epoch 27) for 1 task(s): 	 [Class-IL]: 29.13 % 	 [Task-IL]: 29.13 %
+	Raw accuracy values: Class-IL [29.126213592233007] | Task-IL [29.126213592233007]
+[ 03-01 | 15:24 ] Task 1 | epoch 28
+
+Accuracy (epoch 28) for 1 task(s): 	 [Class-IL]: 30.1 % 	 [Task-IL]: 30.1 %
+	Raw accuracy values: Class-IL [30.097087378640776] | Task-IL [30.097087378640776]
+[ 03-01 | 15:24 ] Task 1 | epoch 29
+
+Accuracy for 1 task(s): 	 [Class-IL]: 29.51 % 	 [Task-IL]: 29.51 %
+	Raw accuracy values: Class-IL [29.514563106796114] | Task-IL [29.514563106796114]
+[ 03-01 | 15:24 ] Task 2 | epoch 0
+
+Accuracy (epoch 0) for 2 task(s): 	 [Class-IL]: 25.78 % 	 [Task-IL]: 25.78 %
+	Raw accuracy values: Class-IL [35.728155339805824, 15.82608695652174] | Task-IL [35.728155339805824, 15.82608695652174]
+[ 03-01 | 15:24 ] Task 2 | epoch 1
+
+Accuracy (epoch 1) for 2 task(s): 	 [Class-IL]: 28.06 % 	 [Task-IL]: 28.06 %
+	Raw accuracy values: Class-IL [37.86407766990291, 18.26086956521739] | Task-IL [37.86407766990291, 18.26086956521739]
+[ 03-01 | 15:24 ] Task 2 | epoch 2

@@ -35,7 +35,7 @@ class Fdr(ContinualModel):
 
         examples_per_task = self.args.buffer_size // self.current_task if self.current_task > 0 else self.args.buffer_size
 
-        if self.current_task > 0:
+        if not self.buffer.is_empty():
             buf_x, buf_lab, buf_log, buf_tl = self.buffer.get_all_data()
             self.buffer.empty()
 

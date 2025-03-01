@@ -29,6 +29,7 @@ import torch
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.lines as mlines
 
 mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(mammoth_path)
@@ -233,6 +234,7 @@ def main(args=None):
 def load_model(model, dataset, args):
     palette = sns.color_palette("deep")[:2]
 
+    fig, axes = plt.subplots(1, 5, figsize=(15, 3.1), dpi=800, sharey=True, sharex=True)
 
     for i in range(dataset.N_TASKS):
         args.loadcheck = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{i}.pt'
@@ -241,31 +243,66 @@ def load_model(model, dataset, args):
 
         """
         _, _ = dataset.get_data_loaders()
-        dataset.train_loader = dataset.all_train_loaders[:i+1]
+        dataset.train_loader = dataset.all_trains_loaders[:i+1]
         print(evaluate(model, dataset))
         """
+        if(i>=2):
+            dataset_samples=50
+        else:
+            dataset_samples=100
         
         all_features, all_labels, all_tasklabels = get_features(model, dataset, 'train_dataset')
         task_mask = 2 == all_tasklabels
-        current_features = all_features[task_mask][:200]
-        current_labels = all_labels[task_mask][:200] - 4
+        current_features = all_features[task_mask][:dataset_samples]
+        current_labels = all_labels[task_mask][:dataset_samples] - 4
+
+        buffer_features, buffer_labels, buffer_tasklabels = get_features(model, dataset, 'buffer')
+        buffer_mask = 2 == buffer_tasklabels
+        buffer_features, buffer_labels = buffer_features[buffer_mask], (buffer_labels[buffer_mask] - 4)
+        permuted_indices = torch.randperm(buffer_labels.size(0))
+        buffer_features, buffer_labels = buffer_features[permuted_indices][:50], buffer_labels[permuted_indices][:50]
+
         pca = PCA(n_components=2)
-        reduced_features = pca.fit_transform(current_features)
+        reduced_features = pca.fit_transform(torch.cat([current_features, buffer_features], dim=0))
+
+        # Separate train and buffer features
+        train_reduced_features = reduced_features[:len(current_features)]
+        buffer_reduced_features = reduced_features[len(current_features):]
+
+        # Separate train and buffer features
+        train_reduced_features = reduced_features[:len(current_features)]
+        buffer_reduced_features = reduced_features[len(current_features):]
 
         # Plot
-        plt.figure(figsize=(4, 4), dpi=1000)
-        if i==2:
-            sns.scatterplot(x=reduced_features[:, 0], y=reduced_features[:, 1], 
-                hue=current_labels, palette=palette, alpha=0.7, legend=True)
-        else:
-            sns.scatterplot(x=reduced_features[:, 0], y=reduced_features[:, 1], 
-                hue=current_labels, palette=palette, alpha=0.7, legend=False)
+        # Train dataset (dots) - Use palette colors (removed c argument)
+        axes[i].scatter(train_reduced_features[:, 0], train_reduced_features[:, 1], 
+                        alpha=0.7, label="Train", marker='o', 
+                        color=[palette[0] if label == 0 else palette[1] for label in current_labels])
+        
+        # Buffer dataset (triangles) - Use palette colors (removed c argument)
+        axes[i].scatter(buffer_reduced_features[:, 0], buffer_reduced_features[:, 1], 
+                        alpha=0.7, label="Buffer", marker='^', 
+                        color=[palette[0] if label == 0 else palette[1] for label in buffer_labels])
+        
+        if i == 2:
+            handles = [
+            mlines.Line2D([], [], marker='o', color='w', markerfacecolor=palette[1], markersize=10, label='Class 4'),
+            mlines.Line2D([], [], marker='^', color='w', markerfacecolor=palette[1], markersize=10, label='Buffer class 4'),
+            mlines.Line2D([], [], marker='o', color='w', markerfacecolor=palette[0], markersize=10, label='Class 5'),
+            mlines.Line2D([], [], marker='^', color='w', markerfacecolor=palette[0], markersize=10, label='Buffer class 5')
+            ]
 
-        plt.xlabel("PC1")
-        if i==0:
-            plt.ylabel("PC2")
-        plt.savefig(mammoth_path + f"/PCA_task{i}.png", dpi=1000)  # Save the plot
-        plt.clf()
+            # Place legend at the top-center of the plot
+            axes[i].legend(handles=handles, loc='upper center', ncol=2)
+            # Set axis labels
+        
+        axes[i].set_xlabel(f'PCA1')
+        if i == 0:
+            axes[i].set_ylabel(f'PCA2')
+        
+    fig.tight_layout()
+    fig.savefig(mammoth_path + f"/PCA_task.pdf", dpi=800)  # Save the plot
+    fig.clf()
         
     
 

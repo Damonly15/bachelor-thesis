@@ -88,11 +88,6 @@ class SequentialMNIST(ContinualDataset):
         return train, test
 
     @staticmethod
-    def get_backbone():
-        return MNISTMLP(28 * 28, SequentialMNIST.N_TASKS
-                        * SequentialMNIST.N_CLASSES_PER_TASK)
-
-    @staticmethod
     def get_backbone(args, model_compatibility):
         num_classes = SequentialMNIST.N_TASKS * SequentialMNIST.N_CLASSES_PER_TASK
         if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):

@@ -145,6 +145,7 @@ class SequentialCUB200(ContinualDataset):
     SETTING = 'class-il'
     N_CLASSES_PER_TASK = 20
     N_TASKS = 10
+    N_CLASSES = N_CLASSES_PER_TASK * N_TASKS
     SIZE = (MyCUB200.IMG_SIZE, MyCUB200.IMG_SIZE)
     MEAN, STD = (0.4856, 0.4994, 0.4324), (0.2272, 0.2226, 0.2613)
     TRANSFORM = transforms.Compose([
@@ -178,9 +179,14 @@ class SequentialCUB200(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone(hookme=False):
-        num_classes = SequentialCUB200.N_CLASSES_PER_TASK * SequentialCUB200.N_TASKS
-        return resnet50(num_classes, pretrained=True)
+    def get_backbone(args, model_compatibility):
+        num_classes = SequentialCUB200.N_CLASSES
+        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
+            cpt = SequentialCUB200.N_CLASSES_PER_TASK #get backbone with different heads
+        else:
+            cpt = -1
+            
+        return resnet50(num_classes, pretrained=True, cpt=cpt)
 
     @staticmethod
     def get_loss():
