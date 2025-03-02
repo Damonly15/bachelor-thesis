@@ -156,10 +156,4 @@ class ErPortion(ContinualModel):
             else:
                 break
         
-<<<<<<< HEAD
-        buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
-        buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
-        self.net.train(status)
-=======
->>>>>>> 1568e28b6e193e6fc0150d2a51d2a3d4679aca1d
         return

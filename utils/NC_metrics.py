@@ -5,13 +5,8 @@ from utils.conf import base_path
 from utils.buffer import Buffer
 from utils.feature_forgetting import get_features
 
-<<<<<<< HEAD
 @torch.no_grad()
-def evaluate_NC_metrics(model, buffer, fixed_mean=None, augmentation=True):
-=======
-@torch.no_grad
 def evaluate_NC_metrics(model, dataset, version):
->>>>>>> 1568e28b6e193e6fc0150d2a51d2a3d4679aca1d
     status = model.net.training
     model.net.eval()
 
@@ -29,15 +24,8 @@ def evaluate_NC_metrics(model, dataset, version):
         mean_feature = torch.mean(current_features, dim=0)
         class_means.append(mean_feature.unsqueeze(0))
 
-<<<<<<< HEAD
-        if(fixed_mean is None) and (all_features.shape[0] > 1):
-            current_intra_class_var.append(calculate_variance(all_features).item())
-        elif(fixed_mean is None) and (all_features.shape[0] == 1):
-            current_intra_class_var.append(0.0)
-=======
         if(current_features.shape[0] > 1):
             current_intra_class_var.append(calculate_variance(current_features).item())
->>>>>>> 1568e28b6e193e6fc0150d2a51d2a3d4679aca1d
         else:
             current_intra_class_var.append(0.0)
 
@@ -46,23 +34,8 @@ def evaluate_NC_metrics(model, dataset, version):
             current_intra_class_var = []
 
             if model.args.training_setting == 'task-il': #calculate inter_class_var separately for the dataset of each task if we are training task il
-<<<<<<< HEAD
-                if fixed_mean is None:
-                    current_class_means = torch.cat(class_means[-model.cpt:], dim=0)
-                    inter_class_var.append(calculate_variance(current_class_means).item())
-                else:
-                    inter_class_var.append(calculate_variance(fixed_mean[lab-model.cpt+1:lab+1]).item())
-
-    class_means = torch.cat(class_means, dim=0)
-    if model.args.training_setting == 'class-il':
-        if fixed_mean is None:
-            inter_class_var = [calculate_variance(class_means).item()] * (model.current_task+1)
-        else:
-            inter_class_var = [calculate_variance(fixed_mean).item()] * (model.current_task+1)
-=======
                 current_class_means = torch.cat(class_means[-model.cpt:], dim=0)
                 inter_class_var.append(calculate_variance(current_class_means).item())
->>>>>>> 1568e28b6e193e6fc0150d2a51d2a3d4679aca1d
 
     class_means = torch.cat(class_means, dim=0)
     if model.args.training_setting == 'class-il':
@@ -113,13 +86,6 @@ def log_NC(model, result_type, NC_metrics):
 
     for i, fa in enumerate(intra_class_var):
         for j, var in enumerate(fa):
-<<<<<<< HEAD
-            wrargs['intra_class_var_' + str(j + 1) + '_task' + str(i + 1)] = var
-    
-    for i, fa in enumerate(inter_class_var):
-        for j, var in enumerate(fa):
-            wrargs['inter_class_var_' + str(j + 1) + '_task' + str(i + 1)] = var
-=======
             wrargs['within_var_' + str(j + 1) + '_task' + str(i + 1)] = var
         
     for i, fa in enumerate(inter_class_var):
@@ -133,7 +99,6 @@ def log_NC(model, result_type, NC_metrics):
     for i, fa in enumerate(cos_distance):
         for j, var in enumerate(fa):
             wrargs['cos_distance_' + str(j + 1) + '_task' + str(i + 1)] = var
->>>>>>> 1568e28b6e193e6fc0150d2a51d2a3d4679aca1d
 
     create_if_not_exists(target_folder + model.args.training_setting)
     create_if_not_exists(target_folder + model.args.training_setting +

@@ -32,8 +32,7 @@ python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_asym_s
 
 python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_task-il-permuted.txt --at_a_time 4 --devices 2 3
 python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_class-il-permuted.txt --at_a_time 4 --devices 0 1
-python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_class-il-permuted.txt --at_a_time 2 --devices 4 5
-python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_task-il-permuted.txt --at_a_time 2 --devices 6 7
+python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_all.txt --at_a_time 4 --devices 4 5 6 7
 """
 
 def parse_args():
