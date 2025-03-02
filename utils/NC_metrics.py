@@ -14,7 +14,9 @@ def evaluate_NC_metrics(model, dataset, version):
     inter_class_var = []
     class_means = []
 
-    all_features, all_labels, _ = get_features(model, dataset, version)
+    all_features, all_labels, all_tasklabels = get_features(model, dataset, version)
+    task_mask = all_tasklabels <= model.current_task
+    all_features, all_labels = all_features[task_mask], all_labels[task_mask]
 
     current_intra_class_var = []
     for lab in range(all_labels.max().item() + 1):
@@ -39,7 +41,7 @@ def evaluate_NC_metrics(model, dataset, version):
 
     class_means = torch.cat(class_means, dim=0)
     if model.args.training_setting == 'class-il':
-        inter_class_var = [calculate_variance(class_means).item()] * (dataset.N_TASKS)
+        inter_class_var = [calculate_variance(class_means).item()] * (model.current_task+1)
        
     model.net.train(status)
     return (intra_class_var, inter_class_var), class_means

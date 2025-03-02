@@ -132,7 +132,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     model.net.to(model.device)
     results, results_mask_classes = [], []
 
-    if (args.log_feature_forgetting != 'output') or args.log_NC_metrics:
+    if (args.log_feature_forgetting != 'output') or args.log_NC_metrics or (args.model in ['plots', 'plots2']):
         dataset_copy = get_dataset(args)
         all_train_loaders = []
         all_test_loaders = []

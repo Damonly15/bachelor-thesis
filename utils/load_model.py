@@ -30,6 +30,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.lines as mlines
+from sklearn.linear_model import LogisticRegression
 
 mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(mammoth_path)
@@ -45,7 +46,7 @@ from utils.best_args import best_args
 from utils.conf import set_random_seed
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.training import evaluate
-from utils.feature_forgetting import get_features
+from utils.feature_forgetting import get_features, evaluate_cil
 
 
 def lecun_fix():
@@ -229,11 +230,44 @@ def main(args=None):
     dataset.all_train_loaders = all_train_loaders
     dataset.all_test_loaders = all_test_loaders
 
-    load_model(model, dataset, args)
+    load_model_plot(model, dataset, args)
 
-def load_model(model, dataset, args):
-    palette = sns.color_palette("deep")[:2]
+def load_model(model, dataset,args):
+    args.loadcheck = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_10.pt'
+    model, past_res = mammoth_load_checkpoint(args, model)
+    model.net.eval()
+    dataset.test_loaders = dataset.all_test_loaders
+    buffer_features, buffer_labels, buffer_tasklabels = get_features(model, dataset, 'buffer')
+    N, D = buffer_features.shape
+    num_samples = 5
+    for i in range(1, 20, 4):
+        noise = torch.randn(N, num_samples, D) * i**0.5
+        # Expand original features to match the noise shape and add noise
+        sampled_features = buffer_features.unsqueeze(1) + noise  # Shape: (N, num_samples, D)
+        
+        # Reshape to merge new samples into a single dimension
+        sampled_features = sampled_features.view(N * num_samples, D)
+        
+        # Expand labels to match new samples
+        sampled_labels = buffer_labels.unsqueeze(1).expand(N, num_samples).reshape(-1)  # Shape: (N * num_samples,)
+        
+        # Concatenate original features and labels
+        new_features = torch.cat([buffer_features, sampled_features], dim=0)  # Shape: ((N * (num_samples+1)), D)
+        new_labels = torch.cat([buffer_labels, sampled_labels], dim=0)  # Shape: ((N * (num_samples+1)),)
 
+        logreg_model = LogisticRegression(max_iter=5000, C=10)
+        logreg_model.fit(new_features.numpy(), new_labels.numpy())
+
+        print(evaluate_cil(model, dataset, logreg_model).mean(dim=0))
+
+
+def load_model_plot(model, dataset, args):
+    palette = {
+    'DB': '#1f77b4',  # Dark Blue
+    'LB': '#aec7e8',  # Light Blue
+    'DR': '#d62728',  # Dark Red/Orange
+    'LR': '#ff9896'   # Light Red/Orange
+    }
     fig, axes = plt.subplots(1, 5, figsize=(15, 3.1), dpi=800, sharey=True, sharex=True)
 
     for i in range(dataset.N_TASKS):
@@ -277,19 +311,19 @@ def load_model(model, dataset, args):
         # Train dataset (dots) - Use palette colors (removed c argument)
         axes[i].scatter(train_reduced_features[:, 0], train_reduced_features[:, 1], 
                         alpha=0.7, label="Train", marker='o', 
-                        color=[palette[0] if label == 0 else palette[1] for label in current_labels])
+                        color=[palette['DB'] if label == 0 else palette['DR'] for label in current_labels])
         
         # Buffer dataset (triangles) - Use palette colors (removed c argument)
         axes[i].scatter(buffer_reduced_features[:, 0], buffer_reduced_features[:, 1], 
                         alpha=0.7, label="Buffer", marker='^', 
-                        color=[palette[0] if label == 0 else palette[1] for label in buffer_labels])
+                        color=[palette['DR'] if label == 0 else palette['LR'] for label in buffer_labels])
         
         if i == 2:
             handles = [
-            mlines.Line2D([], [], marker='o', color='w', markerfacecolor=palette[1], markersize=10, label='Class 4'),
-            mlines.Line2D([], [], marker='^', color='w', markerfacecolor=palette[1], markersize=10, label='Buffer class 4'),
-            mlines.Line2D([], [], marker='o', color='w', markerfacecolor=palette[0], markersize=10, label='Class 5'),
-            mlines.Line2D([], [], marker='^', color='w', markerfacecolor=palette[0], markersize=10, label='Buffer class 5')
+            mlines.Line2D([], [], marker='o', color='w', markerfacecolor=palette['DB'], markersize=10, label='Class 4'),
+            mlines.Line2D([], [], marker='^', color='w', markerfacecolor=palette['LB'], markersize=10, label='Buffer class 4'),
+            mlines.Line2D([], [], marker='o', color='w', markerfacecolor=palette['DR'], markersize=10, label='Class 5'),
+            mlines.Line2D([], [], marker='^', color='w', markerfacecolor=palette['LR'], markersize=10, label='Buffer class 5')
             ]
 
             # Place legend at the top-center of the plot
