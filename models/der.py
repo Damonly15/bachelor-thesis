@@ -2,7 +2,7 @@
 # All rights reserved.
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
-
+import torch
 from torch.nn import functional as F
 import torch
 
@@ -46,7 +46,6 @@ class Der(ContinualModel):
         if not self.buffer.is_empty():
             buf_inputs, buf_logits, buf_tasklabels = self.buffer.get_data(
                 self.args.minibatch_size, transform=self.transform, device=self.device)
-            buf_outputs = self.net(buf_inputs)
             if self.args.training_setting == 'class-il':
                 buf_outputs = self.net.forward(buf_inputs, task_label=None)
             else:

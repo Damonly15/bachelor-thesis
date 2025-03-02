@@ -109,11 +109,9 @@ class SequentialMNIST(ContinualDataset):
         return train, test
 
     @staticmethod
-    def get_backbone(*args):
-        config = args[0]
-        model_compatibility = args[1]
+    def get_backbone(args, model_compatibility):
         num_classes = SequentialMNIST.N_TASKS * SequentialMNIST.N_CLASSES_PER_TASK
-        if (config.training_setting == 'task-il') and ('task-il' in model_compatibility):
+        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
             cpt = SequentialMNIST.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1

@@ -20,7 +20,7 @@ from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.status import ProgressBar
 from utils.feature_forgetting import feature_forgetting, buffer_forgetting
-from utils.NC_metrics import evaluate_NC_metrics, get_test_buffer, log_NC
+from utils.NC_metrics import evaluate_NC_metrics, calculate_mean_distance, log_NC
 
 try:
     import wandb
@@ -132,6 +132,17 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     model.net.to(model.device)
     results, results_mask_classes = [], []
 
+    if (args.log_feature_forgetting != 'output') or args.log_NC_metrics:
+        dataset_copy = get_dataset(args)
+        all_train_loaders = []
+        all_test_loaders = []
+        for i in range(dataset.N_TASKS):
+            train_loader, test_loader = dataset_copy.get_data_loaders()
+            all_train_loaders.append(train_loader)
+            all_test_loaders.append(test_loader)
+        
+        dataset.all_train_loaders = all_train_loaders
+        dataset.all_test_loaders = all_test_loaders
 
     logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
     if (args.log_feature_forgetting == 'features') or (args.log_feature_forgetting == 'buffer'):
@@ -143,7 +154,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))
 
     if args.log_NC_metrics:
-        NC_metrics = [[], []]
+        NC_metrics = [[], [], []]
 
     if args.start_from is not None:
         for i in range(args.start_from):
@@ -255,19 +266,19 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             full_accuracies = buffer_forgetting(model, dataset, args.training_setting)
             log_accs(args, feature_forgetting_loggers[1], (full_accuracies, full_accuracies), t, dataset.SETTING)
 
-        if args.log_NC_metrics:
-            buffer = model.buffer
-            if hasattr(model, 'extra_buffer') and (not model.extra_buffer.is_empty()): #if we have a hold out buffer we evaluate NC on both buffers
-                extra_buffer = model.extra_buffer
-                buffer = (buffer, extra_buffer)
-                
-            c_NC_metrics = evaluate_NC_metrics(model, buffer) #replay buffer
-            NC_metrics[0].append(c_NC_metrics[0])
-            means = c_NC_metrics[1] #we calculate strong neural collapse. Hence we need the class means of the training dataset.
+        if args.log_NC_metrics:  
+            if args.buffer_size != 0:
+                buffer_metrics, buffer_means = evaluate_NC_metrics(model, dataset, 'buffer') #replay buffer
+            train_metrics, train_means = evaluate_NC_metrics(model, dataset, 'train_dataset') #train dataset
+            test_metrics, test_means = evaluate_NC_metrics(model, dataset, 'test_dataset') #test dataset
 
-            buffer = get_test_buffer(model, dataset.test_loaders) #don't apply data augmentation, as samples in the buffer are already augmented
-            c_NC_metrics = evaluate_NC_metrics(model, buffer, means, False) #evaluate metric buffer containing test dataset samples
-            NC_metrics[1].append(c_NC_metrics[0])
+            if args.buffer_size != 0:
+                NC_metrics[0].append(buffer_metrics + (calculate_mean_distance(buffer_means, test_means[:model.n_seen_classes], model.cpt, 'norm'), calculate_mean_distance(buffer_means, test_means[:model.n_seen_classes], model.cpt, 'cos')))
+            NC_metrics[1].append(train_metrics + (calculate_mean_distance(train_means, test_means, model.cpt, 'norm'), calculate_mean_distance(train_means, test_means, model.cpt, 'cos')))
+            if args.buffer_size != 0:
+                NC_metrics[2].append(test_metrics + (calculate_mean_distance(buffer_means, train_means[:model.n_seen_classes], model.cpt, 'norm'), calculate_mean_distance(buffer_means, train_means[:model.n_seen_classes], model.cpt, 'cos')))
+            else:
+                NC_metrics[2].append(test_metrics + (calculate_mean_distance(test_means, test_means, model.cpt, 'norm'), calculate_mean_distance(test_means, test_means, model.cpt, 'cos')))
 
         if args.savecheck:
             save_obj = {
@@ -281,8 +292,11 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                 save_obj['buffer'] = deepcopy(model.buffer).to('cpu')
 
             # Saving model checkpoint
-            checkpoint_name = f'checkpoints/{args.ckpt_name}_joint.pt' if args.joint else f'checkpoints/{args.ckpt_name}_{t}.pt'
+            checkpoint_name = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{t}.pt'
             torch.save(save_obj, checkpoint_name)
+
+        #increase this at the end of a task    
+        model._current_task = model._current_task + 1
 
     if args.validation:
         del dataset
@@ -318,8 +332,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
 
     if args.log_NC_metrics:
-        log_NC(model, "buffer", NC_metrics[0])
-        log_NC(model, "test_dataset", NC_metrics[1])
+        if args.buffer_size != 0:
+            log_NC(model, "buffer", NC_metrics[0])
+        log_NC(model, "train_dataset", NC_metrics[1])
+        log_NC(model, "test_dataset", NC_metrics[2])
 
     if not args.nowand:
         wandb.finish()

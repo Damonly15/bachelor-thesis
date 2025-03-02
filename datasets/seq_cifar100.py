@@ -13,6 +13,7 @@ from PIL import Image
 from torchvision.datasets import CIFAR100
 
 from backbone.ResNet18 import resnet18
+from backbone.ResNet18LayerNorm import resnet18layernorm
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_masked_loaders)
@@ -124,9 +125,21 @@ class SequentialCIFAR100(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone():
-        return resnet18(SequentialCIFAR100.N_CLASSES_PER_TASK
-                        * SequentialCIFAR100.N_TASKS)
+    def get_backbone(args, model_compatibility):
+        num_classes = SequentialCIFAR100.N_CLASSES_PER_TASK * SequentialCIFAR100.N_TASKS
+        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
+            cpt = SequentialCIFAR100.N_CLASSES_PER_TASK #get backbone with different heads
+        else:
+            cpt = -1
+
+        bias=True
+        if args.model == 'er_wa':
+            bias=False
+            
+        if args.backbone == "ResNet18_LN":
+            return resnet18layernorm(nclasses = num_classes, cpt=cpt, bias=bias)
+        else: 
+            return resnet18(nclasses = num_classes, cpt=cpt, bias=bias)
 
     @staticmethod
     def get_loss():

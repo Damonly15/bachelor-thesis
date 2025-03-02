@@ -79,9 +79,6 @@ class ErPortion(ContinualModel):
         return loss.item()
     
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
-        status = self.net.training
-        self.net.eval()
-
         examples_per_class = self.buffer.buffer_size // ((self.current_task + 1) * self.cpt)
         remainder = self.buffer.buffer_size % ((self.current_task + 1) * self.cpt)
         ones_indices = torch.randperm(self.n_seen_classes)[:remainder]
@@ -109,10 +106,10 @@ class ErPortion(ContinualModel):
                     task_labels=tasklab[:first]
                 )
 
-            #second buffer
-            if not self.extra_buffer.is_empty():
-                buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
-                self.extra_buffer.empty()
+        #second buffer
+        if not self.extra_buffer.is_empty():
+            buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
+            self.extra_buffer.empty()
 
             for tl in buf_lab.unique():
                 idx = tl == buf_lab
@@ -159,7 +156,10 @@ class ErPortion(ContinualModel):
             else:
                 break
         
+<<<<<<< HEAD
         buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
         buf_x, buf_lab, buf_tl = self.extra_buffer.get_all_data()
         self.net.train(status)
+=======
+>>>>>>> 1568e28b6e193e6fc0150d2a51d2a3d4679aca1d
         return

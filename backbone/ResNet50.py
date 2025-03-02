@@ -104,6 +104,7 @@ class ResNet(MammothBackbone):
         self,
         block: Bottleneck,
         layers: List[int],
+        cpt: int,
         num_classes: int = 1000,
         zero_init_residual: bool = False,
         groups: int = 1,
@@ -144,7 +145,11 @@ class ResNet(MammothBackbone):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(512 * block.expansion, num_classes)
+        if cpt==-1:
+            self.classifier = nn.Linear(512 * block.expansion, num_classes)
+        else:
+            self.classifier = nn.ModuleList([nn.Linear(512 * block.expansion, cpt) for i in range(num_classes//cpt)])
+        
 
 
         self.feature_dim = 512 * block.expansion
@@ -210,7 +215,7 @@ class ResNet(MammothBackbone):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x: Tensor, returnt="out") -> Tensor:
+    def forward(self, x: Tensor, task_label=None, returnt="out") -> Tensor:
         out_0 = self.conv1(x)
         out_0 = self.bn1(out_0)
         if self.return_prerelu:
@@ -230,7 +235,19 @@ class ResNet(MammothBackbone):
         if returnt == 'features':
             return feature
 
-        out = self.classifier(feature)
+        if task_label is None:
+            out = self.classifier(feature)
+        elif torch.is_tensor(task_label):
+            batch_size = feature.shape[0]
+            out = torch.zeros((batch_size, self.classifier[0].out_features), device=feature.device)
+
+            unique_labels = torch.unique(task_label)
+            for label_idx in unique_labels:
+                mask = (label_idx == task_label)
+                feature_head = feature[mask]
+                out[mask] = self.classifier[label_idx](feature_head)
+        else:
+            out = self.classifier[task_label](feature)
 
         if returnt == 'out':
             return out
@@ -258,7 +275,7 @@ class ResNet(MammothBackbone):
                 p.requires_grad = enable
 
 
-def resnet50(num_classes: int, pretrained=False, **kwargs: Any) -> ResNet:
+def resnet50(num_classes: int, pretrained=False, cpt: int=-1, **kwargs: Any) -> ResNet:
     r"""ResNet-50 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
 
@@ -266,4 +283,4 @@ def resnet50(num_classes: int, pretrained=False, **kwargs: Any) -> ResNet:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
         progress (bool): If True, displays a progress bar of the download to stderr
     """
-    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, pretrained=pretrained, **kwargs)
+    return ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, pretrained=pretrained, cpt=cpt, **kwargs)

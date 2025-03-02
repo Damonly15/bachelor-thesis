@@ -132,10 +132,14 @@ class SequentialCIFAR10(ContinualDataset):
         else:
             cpt = -1
 
+        bias=True
+        if args.model == 'er_wa':
+            bias=False
+            
         if args.backbone == "ResNet18_LN":
-            return resnet18layernorm(nclasses = num_classes, cpt=cpt)
+            return resnet18layernorm(nclasses = num_classes, cpt=cpt, bias=bias)
         else: 
-            return resnet18(nclasses = num_classes, cpt=cpt)
+            return resnet18(nclasses = num_classes, cpt=cpt, bias=bias)
         
     @staticmethod
     def get_loss():

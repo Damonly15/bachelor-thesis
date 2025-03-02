@@ -171,7 +171,7 @@ def mammoth_load_checkpoint(args, model: torch.nn.Module, ignore_classifier=Fals
 
 def _check_loaded_args(args, loaded_args):
     ignored_args = ['loadcheck', 'start_from', 'stop_after', 'conf_jobnum', 'conf_host', 'conf_timestamp', 'distributed', 'examples_log', 'examples_full_log',
-                    'intensive_savecheck', 'job_number', 'conf_git_commit', 'loss_log', 'tensorboard', 'seed', 'savecheck', 'notes', 'non_verbose', 'autorelaunch', 'force_compat', 'conf_external_path']
+                    'intensive_savecheck', 'job_number', 'conf_git_commit', 'loss_log', 'tensorboard', 'savecheck', 'notes', 'non_verbose', 'autorelaunch', 'force_compat', 'conf_external_path', 'class_order']
     mismatched_args = [x for x in vars(args) if x not in ignored_args and (
         x not in vars(loaded_args) or getattr(args, x) != getattr(loaded_args, x))]
 

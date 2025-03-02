@@ -31,9 +31,9 @@ grid_combinations = [
             #"optim_wd": [0.00005],
             #"joint": [1],
             #"eval_epochs": [1],
-            "permute_classes": [1],
-            #"debug_mode": [1],
-            #"portion": [0.05, 0.5, 0.8, 0.9, 1.0]
+            #"permute_classes": [1],
+            #"portion": [0, 0.5, 0.7, 0.8, 0.9, 1.0]
+            #"savecheck": [True]
         },
     },
 ]

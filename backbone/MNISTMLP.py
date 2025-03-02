@@ -69,10 +69,9 @@ class MNISTMLP(MammothBackbone):
         if returnt == 'features':
             return feats
 
-        if task_label is None: # single head setup
+        if task_label is None:
             out = self.classifier(feats)
-
-        elif torch.is_tensor(task_label): # multi head setup
+        elif torch.is_tensor(task_label):
             batch_size = feats.shape[0]
             out = torch.zeros((batch_size, self.classifier[0].out_features), device=feats.device)
 
