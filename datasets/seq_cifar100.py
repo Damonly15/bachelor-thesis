@@ -36,7 +36,9 @@ class MyCIFAR100(CIFAR100):
     """
 
     def __init__(self, root, train=True, transform=None,
-                 target_transform=None, download=False) -> None:
+                 target_transform=None, download=False, supcon=False) -> None:
+        
+        self.supcon = supcon
         self.not_aug_transform = transforms.Compose([transforms.ToTensor()])
         self.root = root
         super(MyCIFAR100, self).__init__(root, train, transform, target_transform, not self._check_integrity())
@@ -60,15 +62,20 @@ class MyCIFAR100(CIFAR100):
         not_aug_img = self.not_aug_transform(original_img)
 
         if self.transform is not None:
-            img = self.transform(img)
+            img1 = self.transform(img)
+            if self.supcon:
+                img2 = self.transform(img)
 
         if self.target_transform is not None:
             target = self.target_transform(target)
 
         if hasattr(self, 'logits'):
-            return img, target, not_aug_img, self.logits[index]
+            return img1, target, not_aug_img, self.logits[index]
+    
+        if self.supcon:
+            return img1, target, img2, not_aug_img
 
-        return img, target, not_aug_img
+        return img1, target, not_aug_img
 
 
 class SequentialCIFAR100(ContinualDataset):
@@ -108,9 +115,23 @@ class SequentialCIFAR100(ContinualDataset):
 
         test_transform = transforms.Compose(
             [transforms.ToTensor(), self.get_normalization_transform()])
+        
+        if hasattr(self,"supconaugmentations"):
+            transform = transforms.Compose([
+                transforms.Resize(size=self.SIZE),
+                transforms.RandomResizedCrop(size=self.SIZE, scale=(0.2, 1.)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomApply([
+                    transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+                ], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=self.SIZE[0]//20*2+1, sigma=(0.1, 2.0))], p=0.5 if self.SIZE[0]>32 else 0.0),
+                transforms.ToTensor(),
+                transforms.Normalize(self.MEAN, self.STD)
+            ])
 
         train_dataset = MyCIFAR100(base_path() + 'CIFAR100', train=True,
-                                   download=True, transform=transform)
+                                   download=True, transform=transform, supcon=hasattr(self,"supconaugmentations"))
         test_dataset = TCIFAR100(base_path() + 'CIFAR100', train=False,
                                  download=True, transform=test_transform)
 

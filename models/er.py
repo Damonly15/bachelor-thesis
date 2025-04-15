@@ -50,13 +50,23 @@ class Er(ContinualModel):
         real_batch_size = inputs.shape[0]
 
         self.opt.zero_grad()
-        if not self.buffer.is_empty():
-            buf_inputs, buf_labels = self.buffer.get_data(
-                self.args.minibatch_size, transform=self.transform, device=self.device)
-            inputs = torch.cat((inputs, buf_inputs))
-            labels = torch.cat((labels, buf_labels))
+        if self.args.training_setting == 'class-il':
+            task_labels = None
+        else: 
+            task_labels = torch.ones(labels.shape[0],  dtype=torch.int64, device=self.device) * self.current_task
+            labels = labels - (task_labels*self.cpt)
 
-        outputs = self.net(inputs)
+        if not self.buffer.is_empty():
+            buf_inputs, buf_labels, buf_tasklabels = self.buffer.get_data(
+                self.args.minibatch_size, transform=self.transform, device=self.device)
+            
+            if self.args.training_setting == 'task-il':
+                buf_labels = buf_labels - (buf_tasklabels*self.cpt)
+                task_labels = torch.cat((task_labels, buf_tasklabels), dim=0)
+            inputs = torch.cat((inputs, buf_inputs), dim=0)
+            labels = torch.cat((labels, buf_labels), dim=0)
+
+        outputs = self.net.forward(inputs, task_label=task_labels)
         loss = self.loss(outputs, labels)
         loss.backward()
         self.opt.step()

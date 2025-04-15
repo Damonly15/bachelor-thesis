@@ -30,8 +30,7 @@ python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_sym_sw
 python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_asym_sweep_bigbatch_debug.txt --at_a_time 2 --devices 6 7
 
 
-python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_task-il-permuted.txt --at_a_time 4 --devices 2 3
-python scripts/local_launcher.py --file data/jobs/list_seq_cifar_supcon_class-il-permuted.txt --at_a_time 4 --devices 0 1
+python scripts/local_launcher.py --file data/jobs/list_seq_cifar100_supcon_all.txt --at_a_time 4 --devices 2 3
 python scripts/local_launcher.py --file data/jobs/list_seq_tinyimg_supcon_all.txt --at_a_time 4 --devices 4 5 6 7
 """
 

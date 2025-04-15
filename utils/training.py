@@ -292,7 +292,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                 save_obj['buffer'] = deepcopy(model.buffer).to('cpu')
 
             # Saving model checkpoint
-            checkpoint_name = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{t}.pt'
+            checkpoint_name = f'./checkpoints/{args.ckpt_name}_{t}.pt'
             torch.save(save_obj, checkpoint_name)
 
         #increase this at the end of a task    

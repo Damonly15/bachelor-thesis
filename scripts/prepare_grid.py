@@ -10,21 +10,21 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'seq_tinyimg_supcon_all',
+        'name':'seq_cifar100_supcon_all',
         'combos': {
-            "dataset": ['seq-tinyimg'],
+            "dataset": ['seq-cifar100'],
             "model": ["supcon"],
-            "buffer_size": [200, 1000], 
-            "lr": [0.1],
+            "buffer_size": [100, 500], 
+            "lr": [0.01],
             "alpha": [1.],
-            "temperature": [0.07],
+            "temperature": [0.5],
             #"beta": [2],
             "seed": [1000, 2000, 3000],
             "enable_other_metrics" : [1],
             "log_feature_forgetting": ["all"],
             "log_NC_metrics": [1],
             "training_setting": ["task-il","class-il"],
-            #"asym": [""],
+            "asym": [""],
             "n_epochs": [100],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
