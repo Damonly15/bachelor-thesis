@@ -149,7 +149,7 @@ def mammoth_load_checkpoint(args, model: torch.nn.Module, ignore_classifier=Fals
         if not os.path.exists(args.loadcheck):
             raise ValueError('The given checkpoint does not exist.')
 
-    saved_obj = torch.load(args.loadcheck, map_location=torch.device("cpu"))
+    saved_obj = torch.load(args.loadcheck, map_location=torch.device("cpu"), weights_only=False)
 
     if 'args' in saved_obj and 'model' in saved_obj:
         _check_loaded_args(args, saved_obj['args'])
@@ -159,7 +159,11 @@ def mammoth_load_checkpoint(args, model: torch.nn.Module, ignore_classifier=Fals
             loading_model = saved_obj['args'].model
             if args.model != loading_model:
                 print(f'WARNING: The loaded model was trained with a different model: {loading_model}')
-            model.load_buffer(saved_obj['buffer'])
+            model.load_buffer(saved_obj['buffer'], 'normal')
+        if 'buffer_refitting' in saved_obj:
+            model.load_buffer(saved_obj['buffer_refitting'], 'refitting')
+        if 'buffer_nobuffer' in saved_obj:
+            model.load_buffer(saved_obj['buffer_nobuffer'], 'nobuffer')
 
         return model, saved_obj['results']
     else:

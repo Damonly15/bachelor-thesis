@@ -39,6 +39,7 @@ from utils.conf import get_device
 from utils.kornia_utils import to_kornia_transform
 from utils.magic import persistent_locals
 from torchvision import transforms
+from utils.feature_forgetting import get_features
 
 with suppress(ImportError):
     import wandb
@@ -148,6 +149,13 @@ class ContinualModel(nn.Module):
         self._cpt = self.dataset.N_CLASSES_PER_TASK
         self._current_task = 0
 
+        self.features = {
+            'train_features': {},
+            'test_features': {},
+            'buffer_features': {},
+            'nobuffer_features': {}
+        }
+
         try:
             self.weak_transform = to_kornia_transform(transform.transforms[-1].transforms)
             self.normalization_transform = to_kornia_transform(self.dataset.get_normalization_transform())
@@ -177,13 +185,18 @@ class ContinualModel(nn.Module):
         self.device = device
         return super().to(device)
 
-    def load_buffer(self, buffer):
+    def load_buffer(self, buffer, version='normal'):
         """
         Default way to handle load buffer.
         """
-        assert buffer.examples.shape[0] == self.args.buffer_size, "Buffer size mismatch. Expected {} got {}".format(
-            self.args.buffer_size, buffer.examples.shape[0])
-        self.buffer = buffer
+        if version=='refitting':
+            self.buffer_refitting = buffer
+        elif version=='nobuffer':
+            self.buffer_nobuffer = buffer
+        else:
+            #assert buffer.examples.shape[0] == self.args.buffer_size, "Buffer size mismatch. Expected {} got {}".format(
+            #    self.args.buffer_size, buffer.examples.shape[0])
+            self.buffer = buffer
 
     def get_parameters(self):
         """
@@ -235,6 +248,7 @@ class ContinualModel(nn.Module):
         Executed after each task.
         """
         pass
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -307,6 +321,14 @@ class ContinualModel(nn.Module):
         """
 
         self.end_task(dataset)
+
+        for version in ['train_dataset', 'test_dataset', 'buffer', 'nobuffer']:
+            if version == 'nobuffer' and self.args.buffer_size == dataset.N_SAMPLES:
+                self.features[version] = get_features(self, dataset, 'train_dataset', dataset.N_TASKS)
+            elif version == 'buffer' and self.args.buffer_size < dataset.N_CLASSES:
+                self.features[version] = None
+            else:
+                self.features[version] = get_features(self, dataset, version, dataset.N_TASKS)
 
     @abstractmethod
     def observe(self, inputs: torch.Tensor, labels: torch.Tensor,

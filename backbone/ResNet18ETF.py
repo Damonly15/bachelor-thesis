@@ -5,6 +5,7 @@
 
 from typing import List
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,7 +30,7 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> F.conv2d:
                      padding=1, bias=False)
 
 
-class BasicBlock(nn.Module):
+class BasicBlockETF(nn.Module):
     """
     The basic block of ResNet.
     """
@@ -43,7 +44,7 @@ class BasicBlock(nn.Module):
             in_planes: the number of input channels
             planes: the number of channels (to be possibly expanded)
         """
-        super(BasicBlock, self).__init__()
+        super(BasicBlockETF, self).__init__()
         self.return_prerelu = False
         self.conv1 = conv3x3(in_planes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -79,12 +80,12 @@ class BasicBlock(nn.Module):
         return out
 
 
-class ResNet(MammothBackbone):
+class ResNetETF(MammothBackbone):
     """
     ResNet network architecture. Designed for complex datasets.
     """
 
-    def __init__(self, block: BasicBlock, num_blocks: List[int],
+    def __init__(self, block: BasicBlockETF, num_blocks: List[int],
                  num_classes: int, nf: int, cpt: int, bias=True) -> None:
         """
         Instantiates the layers of the network.
@@ -95,7 +96,7 @@ class ResNet(MammothBackbone):
             num_classes: the number of output classes
             nf: the number of filters
         """
-        super(ResNet, self).__init__()
+        super(ResNetETF, self).__init__()
         self.return_prerelu = False
         self.device = "cpu"
         self.in_planes = nf
@@ -109,7 +110,7 @@ class ResNet(MammothBackbone):
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
         if cpt==-1:
-            self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes, bias=bias)
+            self.classifier = ETF_Classifier(nf * 8 * block.expansion, num_classes)
         else:
             self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt, bias=bias) for i in range(num_classes//cpt)])
         
@@ -124,7 +125,7 @@ class ResNet(MammothBackbone):
             if isinstance(c, self.block):
                 c.return_prerelu = enable
 
-    def _make_layer(self, block: BasicBlock, planes: int,
+    def _make_layer(self, block: BasicBlockETF, planes: int,
                     num_blocks: int, stride: int) -> nn.Module:
         """
         Instantiates a ResNet layer.
@@ -174,7 +175,19 @@ class ResNet(MammothBackbone):
         if returnt == 'features':
             return feature
 
-        out = self.final_layer(feature, task_label)
+        if task_label is None:
+            out = self.classifier(feature)
+        elif torch.is_tensor(task_label):
+            batch_size = feature.shape[0]
+            out = torch.zeros((batch_size, self.classifier[0].out_features), device=feature.device)
+
+            unique_labels = torch.unique(task_label)
+            for label_idx in unique_labels:
+                mask = (label_idx == task_label)
+                feature_head = feature[mask]
+                out[mask] = self.classifier[label_idx](feature_head)
+        else:
+            out = self.classifier[task_label](feature)
 
         if returnt == 'out':
             return out
@@ -191,16 +204,45 @@ class ResNet(MammothBackbone):
 
         raise NotImplementedError("Unknown return type. Must be in ['out', 'features', 'both', 'all'] but got {}".format(returnt))
 
-    def final_layer(self, feature, task_label):
-        if isinstance(self.classifier, nn.Linear):
-            out = self.classifier(feature)
-        else:
-            all_outputs = torch.stack([head(feature) for head in self.classifier], dim=1)  # [batch, num_heads, out_features]
-            batch_idx = torch.arange(feature.size(0), device=feature.device)
-            out = all_outputs[batch_idx, task_label] 
-        return out
 
-def resnet18(nclasses: int, nf: int = 64, cpt: int=-1, bias=True) -> ResNet:
+class ETF_Classifier(nn.Module):
+    def __init__(self, feat_in, num_classes, fix_bn=False, LWS=False, reg_ETF=False):
+        super(ETF_Classifier, self).__init__()
+        P = self.generate_random_orthogonal_matrix(feat_in, num_classes)
+        I = torch.eye(num_classes)
+        one = torch.ones(num_classes, num_classes)
+        M = np.sqrt(num_classes / (num_classes-1)) * torch.matmul(P, I-((1/num_classes) * one))
+        self.ori_M = M.cuda()
+
+        self.LWS = LWS
+        self.reg_ETF = reg_ETF
+#        if LWS:
+#            self.learned_norm = nn.Parameter(torch.ones(1, num_classes))
+#            self.alpha = nn.Parameter(1e-3 * torch.randn(1, num_classes).cuda())
+#            self.learned_norm = (F.softmax(self.alpha, dim=-1) * num_classes)
+#        else:
+#            self.learned_norm = torch.ones(1, num_classes).cuda()
+
+        self.BN_H = nn.BatchNorm1d(feat_in)
+        if fix_bn:
+            self.BN_H.weight.requires_grad = False
+            self.BN_H.bias.requires_grad = False
+
+
+    def generate_random_orthogonal_matrix(self, feat_in, num_classes):
+        a = np.random.random(size=(feat_in, num_classes))
+        P, _ = np.linalg.qr(a)
+        P = torch.tensor(P).float()
+        assert torch.allclose(torch.matmul(P.T, P), torch.eye(num_classes), atol=1e-07), torch.max(torch.abs(torch.matmul(P.T, P) - torch.eye(num_classes)))
+        return P
+
+    def forward(self, x):
+        #x = self.BN_H(x)
+        x = torch.matmul(x, self.ori_M)
+        return x
+
+
+def resnet18etf(nclasses: int, nf: int = 64, cpt: int=-1, bias=True) -> ResNetETF:
     """
     Instantiates a ResNet18 network.
 
@@ -211,5 +253,4 @@ def resnet18(nclasses: int, nf: int = 64, cpt: int=-1, bias=True) -> ResNet:
     Returns:
         ResNet network
     """
-    return ResNet(BasicBlock, [2, 2, 2, 2], nclasses, nf, cpt, bias)
-
+    return ResNetETF(BasicBlockETF, [2, 2, 2, 2], nclasses, nf, cpt, bias)

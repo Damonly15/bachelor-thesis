@@ -223,7 +223,11 @@ class Buffer:
             def transform(x): return x
 
         selected_samples = self.examples[choice] if mask_task_out is None else self.examples[samples_mask][choice]
-        ret_tuple = (torch.stack([transform(ee) for ee in selected_samples.cpu()]).to(target_device),)
+        
+        ret_tuple_cpu = torch.stack([transform(ee) for ee in selected_samples.cpu()])
+        ret_tuple = (ret_tuple_cpu.to(target_device),)
+        del ret_tuple_cpu  # Hint to GC
+
         for attr_str in self.attributes[1:]:
             if hasattr(self, attr_str):
                 attr = getattr(self, attr_str)

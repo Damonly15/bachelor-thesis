@@ -111,7 +111,8 @@ class ResNet(MammothBackbone):
         pretrained: bool = False,
         width_per_group: int = 64,
         replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., nn.Module]] = None
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        bias: bool = True
     ) -> None:
         super(ResNet, self).__init__()
         self.block = block
@@ -146,9 +147,9 @@ class ResNet(MammothBackbone):
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         if cpt==-1:
-            self.classifier = nn.Linear(512 * block.expansion, num_classes)
+            self.classifier = nn.Linear(512 * block.expansion, num_classes, bias=bias)
         else:
-            self.classifier = nn.ModuleList([nn.Linear(512 * block.expansion, cpt) for i in range(num_classes//cpt)])
+            self.classifier = nn.ModuleList([nn.Linear(512 * block.expansion, cpt, bias=bias) for i in range(num_classes//cpt)])
         
 
         for m in self.modules():
@@ -232,19 +233,7 @@ class ResNet(MammothBackbone):
         if returnt == 'features':
             return feature
 
-        if task_label is None:
-            out = self.classifier(feature)
-        elif torch.is_tensor(task_label):
-            batch_size = feature.shape[0]
-            out = torch.zeros((batch_size, self.classifier[0].out_features), device=feature.device)
-
-            unique_labels = torch.unique(task_label)
-            for label_idx in unique_labels:
-                mask = (label_idx == task_label)
-                feature_head = feature[mask]
-                out[mask] = self.classifier[label_idx](feature_head)
-        else:
-            out = self.classifier[task_label](feature)
+        out = self.final_layer(feature, task_label)
 
         if returnt == 'out':
             return out
@@ -260,6 +249,15 @@ class ResNet(MammothBackbone):
             return (out, feature)
 
         raise NotImplementedError("Unknown return type. Must be in ['out', 'features', 'both', 'all'] but got {}".format(returnt))
+
+    def final_layer(self, feature, task_label):
+        if isinstance(self.classifier, nn.Linear):
+            out = self.classifier(feature)
+        else:
+            all_outputs = torch.stack([head(feature) for head in self.classifier], dim=1)  # [batch, num_heads, out_features]
+            batch_idx = torch.arange(feature.size(0), device=feature.device)
+            out = all_outputs[batch_idx, task_label] 
+        return out
 
     def set_grad_filter(self, filter_s: str, enable: bool) -> None:
         negative_mode = filter_s[0] == '~'

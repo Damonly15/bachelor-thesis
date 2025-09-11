@@ -22,8 +22,8 @@ from utils.buffer import Buffer
 from utils.training import evaluate
 from utils.feature_forgetting import feature_forgetting_cil
 
-class Er(ContinualModel):
-    NAME = 'er'
+class ErBalanced(ContinualModel):
+    NAME = 'er_balanced'
     #this needs task boundaries
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il']
 
@@ -42,14 +42,18 @@ class Er(ContinualModel):
         """
         The ER model maintains a buffer of previously seen examples and uses them to augment the current batch during training.
         """
-        super(Er, self).__init__(backbone, loss, args, transform)
+        super(ErBalanced, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
         self.buffer_nobuffer = Buffer(self.dataset.N_SAMPLES - self.args.buffer_size)
 
         remainder = self.args.buffer_size % (self.dataset.N_CLASSES)
         ones_indices = torch.randperm(self.dataset.N_CLASSES)[:remainder]
         self.remainder = torch.zeros(self.dataset.N_CLASSES)
-        self.remainder[ones_indices] = 1  
+        self.remainder[ones_indices] = 1 
+
+        self.overall_batch_size = self.args.batch_size + self.args.minibatch_size
+        self.first_task_iterations = 0
+        self.current_task_iterations = 0 
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
@@ -57,6 +61,13 @@ class Er(ContinualModel):
         """
         if inputs.shape[0] != self.dataset.get_batch_size():
             return 0.0
+        
+        if self.current_task > 0:
+            if self.first_task_iterations < self.current_task_iterations:
+                return 0
+            self.current_task_iterations += 1
+        else:
+            self.first_task_iterations += 1
 
         self.opt.zero_grad()
 
@@ -109,5 +120,9 @@ class Er(ContinualModel):
                 self.buffer_nobuffer.add_data(examples=not_aug_inputs[flags_nobuffer],
                                     labels=labels[flags_nobuffer],
                                     task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags_nobuffer])
+
+        self.current_task_iterations = 0
+        self.args.batch_size = self.overall_batch_size // (self.current_task+2)
+        self.args.minibatch_size = self.overall_batch_size - self.args.batch_size
 
         return

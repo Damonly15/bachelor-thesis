@@ -22,6 +22,7 @@ class ErBiC(ContinualModel):
     def __init__(self, backbone, loss, args, transform):
         super(ErBiC, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
+        self.buffer_refitting = Buffer(self.args.buffer_size)
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         self.opt.zero_grad()
@@ -51,58 +52,90 @@ class ErBiC(ContinualModel):
 
 
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
+            
         examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
         remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
         ones_indices = torch.randperm(self.n_seen_classes)[:remainder]
         remainder = torch.zeros(self.n_seen_classes)
-        if not self.args.buffer_size == dataset.N_CLASSES: #in this case just use one sample per class
-            remainder[ones_indices] = 1
+        remainder[ones_indices] = 1
+
+        if self.current_task == 0:
+            examples_per_class_refitting = (self.args.buffer_size // ((self.current_task + 1) * self.cpt)) - examples_per_class
+        else:
+            examples_per_class_refitting = (self.args.buffer_size // (self.current_task * self.cpt)) - examples_per_class
 
         # fdr reduce coreset
         if not self.buffer.is_empty():
             buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
             self.buffer.empty()
+            self.buffer_refitting.empty() #store availible samples in extra buffer which we then use to refit the head.
 
             for tl in buf_lab.unique():
                 idx = tl == buf_lab
                 ex, lab, tasklab = buf_x[idx], buf_lab[idx], buf_tl[idx]
                 first = min(ex.shape[0], examples_per_class + int(remainder[tl].item()))
+                
                 self.buffer.add_data(
                     examples=ex[:first],
                     labels=lab[:first],
                     task_labels=tasklab[:first]
                 )
+                self.buffer_refitting.add_data(
+                    examples=ex[first:],
+                    labels=lab[first:],
+                    task_labels=tasklab[first:]
+                )
 
         # fdr add new task
         ce = torch.tensor([examples_per_class] * self.cpt)
         ce = (ce + remainder[self.n_past_classes:]).int() 
+        ce_refitting = torch.tensor([examples_per_class_refitting] * self.cpt).int()
 
         for data in dataset.train_loader:
             inputs, labels, not_aug_inputs = data
-            if all(ce == 0):
+            if all(ce == 0) and all(ce_refitting == 0):
                 break
 
             flags = torch.zeros(len(inputs)).bool()
+            flags_refitting = torch.zeros(len(inputs)).bool()
             for j in range(len(flags)):
                 if ce[labels[j] % self.cpt] > 0:
                     flags[j] = True
                     ce[labels[j] % self.cpt] -= 1
+                elif ce_refitting[labels[j] % self.cpt] > 0:
+                    flags_refitting[j] = True
+                    ce_refitting[labels[j] % self.cpt] -= 1
 
-            self.buffer.add_data(examples=not_aug_inputs[flags],
+            if not torch.all(~flags):
+                self.buffer.add_data(examples=not_aug_inputs[flags],
                                     labels=labels[flags],
                                     task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
+            
+            if not torch.all(~flags_refitting):
+                self.buffer_refitting.add_data(examples=not_aug_inputs[flags_refitting],
+                                    labels=labels[flags_refitting],
+                                    task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags_refitting])
+
 
         #bias correction
         if self.current_task > 0:
+            buffer_bic = Buffer(2*self.args.buffer_size)
+
+            buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
+            buffer_bic.add_data(examples=buf_x, labels=buf_lab)
+
+            buf_x, buf_lab, buf_tl = self.buffer_refitting.get_all_data()
+            buffer_bic.add_data(examples=buf_x, labels=buf_lab)
+
             status = self.net.training
             self.net.eval()
-
+    
             corr_factors = torch.tensor([0., 1.], device=self.device, requires_grad=True)
             self.biasopt = Adam([corr_factors], lr=0.001)
 
             for l in range(self.args.bic_iters):
-                buf_inputs, buf_labels, _ = self.buffer.get_data(
-                    self.args.minibatch_size, transform=self.transform, device=self.device)
+                buf_inputs, buf_labels = buffer_bic.get_data(
+                    self.args.batch_size, transform=self.transform, device=self.device)
 
                 self.biasopt.zero_grad()
                 with torch.no_grad():

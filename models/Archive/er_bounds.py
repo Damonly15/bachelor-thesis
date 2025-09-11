@@ -14,16 +14,14 @@ Example usage:
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from torch.optim import Adam
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
 from utils.buffer import Buffer
-from utils.training import evaluate
-from utils.feature_forgetting import feature_forgetting_cil
 
-class Er(ContinualModel):
-    NAME = 'er'
+
+class ErBounds(ContinualModel):
+    NAME = 'er_bounds'
     #this needs task boundaries
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il']
 
@@ -42,35 +40,30 @@ class Er(ContinualModel):
         """
         The ER model maintains a buffer of previously seen examples and uses them to augment the current batch during training.
         """
-        super(Er, self).__init__(backbone, loss, args, transform)
+        super(ErBounds, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
-        self.buffer_nobuffer = Buffer(self.dataset.N_SAMPLES - self.args.buffer_size)
-
-        remainder = self.args.buffer_size % (self.dataset.N_CLASSES)
-        ones_indices = torch.randperm(self.dataset.N_CLASSES)[:remainder]
-        self.remainder = torch.zeros(self.dataset.N_CLASSES)
-        self.remainder[ones_indices] = 1  
+        self.buffer_refitting = Buffer(self.args.buffer_size)
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
         ER trains on the current task using the data provided, but also augments the batch with data from the buffer.
         """
-        if inputs.shape[0] != self.dataset.get_batch_size():
-            return 0.0
 
         self.opt.zero_grad()
 
-        task_labels = torch.ones(labels.shape[0], dtype=torch.int64, device=self.device) * self.current_task
-        if self.args.training_setting == 'task-il':
+        if self.args.training_setting == 'class-il':
+            task_labels = None
+        else: 
+            task_labels = torch.ones(labels.shape[0],  dtype=torch.int64, device=self.device) * self.current_task
             labels = labels - (task_labels*self.cpt)
 
         if not self.buffer.is_empty():
             buf_inputs, buf_labels, buf_tasklabels = self.buffer.get_data(
                 self.args.minibatch_size, transform=self.transform, device=self.device)
             
-            task_labels = torch.cat((task_labels, buf_tasklabels), dim=0)
             if self.args.training_setting == 'task-il':
-                buf_labels = buf_labels - (buf_tasklabels*self.cpt)   
+                buf_labels = buf_labels - (buf_tasklabels*self.cpt)
+                task_labels = torch.cat((task_labels, buf_tasklabels), dim=0)
             inputs = torch.cat((inputs, buf_inputs), dim=0)
             labels = torch.cat((labels, buf_labels), dim=0)
 
@@ -81,33 +74,70 @@ class Er(ContinualModel):
         self.opt.step()
 
         return loss.item()
-
+    
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
-        examples_per_class = self.args.buffer_size // dataset.N_CLASSES
+            
+        examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
+        remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
+        ones_indices = torch.randperm(self.n_seen_classes)[:remainder]
+        remainder = torch.zeros(self.n_seen_classes)
+        remainder[ones_indices] = 1
 
-        ce = torch.tensor([examples_per_class] * self.cpt) + self.remainder[self.n_past_classes:self.n_seen_classes]
+        if self.current_task == 0:
+            examples_per_class_refitting = (self.args.buffer_size // ((self.current_task + 1) * self.cpt)) - examples_per_class
+        else:
+            examples_per_class_refitting = (self.args.buffer_size // (self.current_task * self.cpt)) - examples_per_class
+
+        # fdr reduce coreset
+        if not self.buffer.is_empty():
+            buf_x, buf_lab, buf_tl = self.buffer.get_all_data()
+            self.buffer.empty()
+            self.buffer_refitting.empty() #store availible samples in extra buffer which we then use to refit the head.
+
+            for tl in buf_lab.unique():
+                idx = tl == buf_lab
+                ex, lab, tasklab = buf_x[idx], buf_lab[idx], buf_tl[idx]
+                first = min(ex.shape[0], examples_per_class + int(remainder[tl].item()))
+                
+                self.buffer.add_data(
+                    examples=ex[:first],
+                    labels=lab[:first],
+                    task_labels=tasklab[:first]
+                )
+                self.buffer_refitting.add_data(
+                    examples=ex[first:],
+                    labels=lab[first:],
+                    task_labels=tasklab[first:]
+                )
+
+        # fdr add new task
+        ce = torch.tensor([examples_per_class] * self.cpt)
+        ce = (ce + remainder[self.n_past_classes:]).int() 
+        ce_refitting = torch.tensor([examples_per_class_refitting] * self.cpt).int()
 
         for data in dataset.train_loader:
             inputs, labels, not_aug_inputs = data
+            if all(ce == 0) and all(ce_refitting == 0):
+                break
 
             flags = torch.zeros(len(inputs)).bool()
-            flags_nobuffer = torch.zeros(len(inputs)).bool()
-            
+            flags_refitting = torch.zeros(len(inputs)).bool()
             for j in range(len(flags)):
                 if ce[labels[j] % self.cpt] > 0:
                     flags[j] = True
                     ce[labels[j] % self.cpt] -= 1
-                else:
-                    flags_nobuffer[j] = True
+                elif ce_refitting[labels[j] % self.cpt] > 0:
+                    flags_refitting[j] = True
+                    ce_refitting[labels[j] % self.cpt] -= 1
 
             if not torch.all(~flags):
                 self.buffer.add_data(examples=not_aug_inputs[flags],
                                     labels=labels[flags],
                                     task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
-                
-            if not torch.all(~flags_nobuffer):
-                self.buffer_nobuffer.add_data(examples=not_aug_inputs[flags_nobuffer],
-                                    labels=labels[flags_nobuffer],
-                                    task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags_nobuffer])
+            
+            if not torch.all(~flags_refitting):
+                self.buffer_refitting.add_data(examples=not_aug_inputs[flags_refitting],
+                                    labels=labels[flags_refitting],
+                                    task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags_refitting])
 
         return

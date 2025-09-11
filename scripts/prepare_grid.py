@@ -10,28 +10,31 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'seq_cifar100_tests',
+        'name':'test',
         'combos': {
             "dataset": ['seq-cifar100'],
-            "model": ['fdr'],
-            "buffer_size": [0, 100],
-            "lr": [0.03],
-            "alpha": [0.3],
+            "model": ['er_extra'],
+            "buffer_size": [0],
+            "lr": [0.1],
+            #"alpha": [0.1],
             #"beta": [2],
             "seed": [1000, 2000, 3000],
             #"enable_other_metrics" : [1],
-            "log_feature_forgetting": ["features"],
-            #"log_NC_metrics": [1],
-            "training_setting": ["class-il", "task-il"],
+            "log_feature_forgetting": [1],
+            "log_NC_metrics": [1],
+            "training_setting": ['task-il', 'class-il'],
             #"n_epochs": [150],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
-            #"optim_wd": [0.00005],
+            "optim_wd": [0.01],
             #"joint": [1],
             #"eval_epochs": [1],
-            #"permute_classes": [1],
-            #"portion": [0, 0.5, 0.7, 0.8, 0.9, 1.0]
+            "permute_classes": [1],
+            #"portion": [0.75],
             #"savecheck": [True]
+            #"n_epochs": [1],
+            #"start_from": [8]
+            #"eval_epochs": [5]
         },
     },
 ]

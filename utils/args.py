@@ -34,7 +34,7 @@ def add_experiment_args(parser: ArgumentParser) -> None:
                            help='Use class or task incremental training. Please use class-il for domain-il setting')
     parser.add_argument('--model', type=custom_str_underscore, required=True,
                         help='Model name.', choices=list(get_all_models().keys()))
-    parser.add_argument('--backbone', type=str, default="ResNet18_BN", choices=["ResNet18_BN", "ResNet18_LN"], required=False,
+    parser.add_argument('--backbone', type=str, default="ResNet18_BN", choices=["ResNet18_BN", "ResNet18_LN", "ResNet18_BN_ETF"], required=False,
                            help='Which backbone to use')
     parser.add_argument('--chunks', type=int, help='Number of chunks for chunking dataset')
 
@@ -69,7 +69,7 @@ def add_experiment_args(parser: ArgumentParser) -> None:
     parser.add_argument('--savecheck', action='store_true', help='Save checkpoint?')
     parser.add_argument('--loadcheck', type=str, default=None, help='Path of the checkpoint to load (.pt file for the specific task)')
     parser.add_argument('--ckpt_name', type=str, required=False, help='(optional) checkpoint save name.')
-    parser.add_argument('--start_from', type=int, default=None, help="Task to start from")
+    parser.add_argument('--start_from', type=int, default=0, help="Task to start from")
     parser.add_argument('--stop_after', type=int, default=None, help="Task limit")
 
     parser.add_argument('--joint', type=int, choices=[0, 1], default=0,
@@ -115,8 +115,8 @@ def add_management_args(parser: ArgumentParser) -> None:
     parser.add_argument('--inference_only', action="store_true",
                         help='Perform inference only for each task (no training).')
     
-    parser.add_argument('--log_feature_forgetting', type=str, default="output", choices=["output", "features", "buffer", "all"], required=False,
-                            help='Additionally evaluate performance witha fitted head. Either fit head on all seen samples or just on the buffer.')
+    parser.add_argument('--log_feature_forgetting', type=int, default=0, choices=[0, 1], required=False,
+                            help='Additionally evaluate performance witha fitted head.')
     parser.add_argument('--log_NC_metrics', type=int, default=0, choices=[0, 1], required=False,
                             help='Additionally evaluate NC metrics. It evaluate NC metrics on the replay buffer, a second buffer not used during replay and samples from the test set')
 

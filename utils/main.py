@@ -205,11 +205,6 @@ def main(args=None):
     if dataset.SETTING == "domain-il" and args.training_setting == "task-il":
         raise Exception("Task-IL training method is not compatible with a Domain-IL dataset. Please use Class-IL training with a Domain-IL dataset")
 
-    if args.log_feature_forgetting == 'all' and args.buffer_size == 0:
-        args.log_feature_forgetting = 'features'
-    elif args.log_feature_forgetting == 'buffer' and args.buffer_size == 0:
-        args.log_feature_forgetting = 'output'
-
     train(model, dataset, args)
 
 

@@ -38,6 +38,7 @@ class ContinualDataset:
     N_CLASSES_PER_TASK: int
     N_TASKS: int
     N_CLASSES: int
+    N_SAMPLES: int
     SIZE: Tuple[int]
     AVAIL_SCHEDS = ['multisteplr']
 

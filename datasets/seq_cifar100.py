@@ -13,6 +13,7 @@ from PIL import Image
 from torchvision.datasets import CIFAR100
 
 from backbone.ResNet18 import resnet18
+from backbone.ResNet18ETF import resnet18etf
 from backbone.ResNet18LayerNorm import resnet18layernorm
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
@@ -90,6 +91,7 @@ class SequentialCIFAR100(ContinualDataset):
     N_CLASSES_PER_TASK = 10
     N_TASKS = 10
     N_CLASSES = N_CLASSES_PER_TASK * N_TASKS
+    N_SAMPLES = 50000
     SIZE = (32, 32)
     MEAN, STD = (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
     TRANSFORM = transforms.Compose(
@@ -138,12 +140,20 @@ class SequentialCIFAR100(ContinualDataset):
             
         if args.backbone == "ResNet18_LN":
             return resnet18layernorm(nclasses = num_classes, cpt=cpt, bias=bias)
+        elif args.backbone == "ResNet18_BN_ETF":
+            return resnet18etf(nclasses = num_classes, cpt=cpt, bias=bias)
         else: 
             return resnet18(nclasses = num_classes, cpt=cpt, bias=bias)
 
     @staticmethod
     def get_loss():
         return F.cross_entropy
+        #def loss_fn(input, target):
+        #    num_classes = input.size(1)
+        #    target_one_hot = F.one_hot(target, num_classes=num_classes).type_as(input)
+        #    input_probs = F.softmax(input, dim=1)  # Convert logits to probabilities
+        #    return F.mse_loss(input_probs, target_one_hot)
+        #return loss_fn
 
     @staticmethod
     def get_normalization_transform():

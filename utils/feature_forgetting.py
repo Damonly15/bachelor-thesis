@@ -5,20 +5,13 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 from typing import Tuple
 
-from datasets import ContinualDataset
-from models import ContinualModel
-
-all_train_loaders = None
-
-def feature_forgetting(model: ContinualModel, dataset: ContinualDataset, version):
-    global all_train_loaders  # Declare it as global
-    all_train_loaders = dataset.all_train_loaders[:model.current_task+1]
+def feature_forgetting(model, dataset, version):
     if version=='class-il':
         return feature_forgetting_cil(model, dataset, 'train_dataset')
     else:
         return feature_forgetting_til(model, dataset, 'train_dataset')
     
-def buffer_forgetting(model: ContinualModel, dataset: ContinualDataset, version):
+def buffer_forgetting(model, dataset, version):
     if version=='class-il':
         return feature_forgetting_cil(model, dataset, 'buffer')
     else:
@@ -26,7 +19,7 @@ def buffer_forgetting(model: ContinualModel, dataset: ContinualDataset, version)
     
 
 @torch.no_grad()
-def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset, version):
+def feature_forgetting_til(model, dataset, version):
     """
     Evaluate the feature quality at four different layers with a separate head
     """
@@ -35,7 +28,7 @@ def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset, ver
     model.net.eval()
 
     heads = []    #Separate head for every task
-    all_features, all_labels, all_tasklabels = get_features(model, dataset, version)
+    all_features, all_labels, all_tasklabels = model.features[version]
 
     for k in range(model.current_task+1):
         task_mask = all_tasklabels == k
@@ -52,7 +45,7 @@ def feature_forgetting_til(model: ContinualModel, dataset: ContinualDataset, ver
 
 
 @torch.no_grad()
-def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads) -> Tuple[list, list]:
+def evaluate_til(model, dataset, heads) -> Tuple[list, list]:
     """
     Evaluates the accuracy of the model for each past task in TIL paradigm with a fitted head.
     """
@@ -82,7 +75,7 @@ def evaluate_til(model: ContinualModel, dataset: ContinualDataset, heads) -> Tup
     return accs
 
 @torch.no_grad()
-def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset, version):
+def feature_forgetting_cil(model, dataset, version):
     """
     Evaluate the feature quality at four different layers with a common head
     """
@@ -90,21 +83,22 @@ def feature_forgetting_cil(model: ContinualModel, dataset: ContinualDataset, ver
     model_status = model.net.training
     model.net.eval()
 
-    all_features, all_labels, all_tasklabels = get_features(model, dataset, version)
-    task_mask = all_tasklabels <= model.current_task
-    current_features = all_features[task_mask]
-    current_labels = all_labels[task_mask]
+    current_features, current_labels, _ = model.features[version]
 
     logreg_model = LogisticRegression(max_iter=5000, C=10)
     logreg_model.fit(current_features.numpy(), current_labels.numpy())
 
     accuracy = evaluate_cil(model, dataset, logreg_model)
     model.net.train(model_status)
+    """W = logreg_model.coef_
+    b = logreg_model.intercept_
+    model.net.classifier.weight[:model.n_seen_classes, :] = torch.tensor(W, dtype=torch.float32, device=model.device)
+    model.net.classifier.bias[:model.n_seen_classes] = torch.tensor(b, dtype=torch.float32, device=model.device)"""
     return accuracy
 
 
 @torch.no_grad()
-def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head) -> Tuple[list, list]:
+def evaluate_cil(model, dataset, head) -> Tuple[list, list]:
     """
     Evaluates the accuracy of the model for each past task in CIL paradigm with a fitted head.
     """
@@ -132,31 +126,40 @@ def evaluate_cil(model: ContinualModel, dataset: ContinualDataset, head) -> Tupl
         accs.append(correct / total * 100)
     return accs
 
-def get_features(model, dataset, version):
-    #should only be called when network is in eval mode and does not track gradients!
-    if version == 'buffer':
-        buf_x, all_labels, all_tasklabels = [], [], []
-
-        if not model.buffer.is_empty():
-            c_buf_x, c_buf_lab, c_buf_tl = model.buffer.get_all_data(transform=model.transform)
-            buf_x.append(c_buf_x)
-            all_labels.append(c_buf_lab)
-            all_tasklabels.append(c_buf_tl)
-        if hasattr(model, 'extra_buffer') and (not model.extra_buffer.is_empty()):
-            c_buf_x, c_buf_lab, c_buf_tl = model.extra_buffer.get_all_data(transform=model.transform)
-            buf_x.append(c_buf_x)
-            all_labels.append(c_buf_lab,)
-            all_tasklabels.append(c_buf_tl)
-
-        buf_x = torch.cat(buf_x, dim=0)
-        all_labels = torch.cat(all_labels, dim=0)
-        all_tasklabels = torch.cat(all_tasklabels, dim=0)
+@torch.no_grad
+def get_features(model, dataset, version, max_task, feat_or_log="features"):
+    #should only be called when network is in eval mode!
+    if version == 'buffer':        
+        buf_x, all_labels, all_tasklabels = model.buffer.get_all_data(transform=model.transform)
 
         all_features = []
         for i in range(0, buf_x.shape[0], model.args.batch_size):
             inputs = buf_x[i: i+model.args.batch_size]
+            current_labels = all_tasklabels[i: i+model.args.batch_size]
             inputs = inputs.to(model.device)
-            features = model.net.forward(inputs, returnt="features").detach().cpu()
+
+            if feat_or_log=="features":
+                features = model.net.forward(inputs, returnt="features").detach().cpu()
+            elif feat_or_log=="logits":
+                features = model.net.forward(inputs, task_label=current_labels).detach().cpu()
+
+            all_features.append(features)
+            
+        all_features = torch.cat(all_features, dim=0)
+    elif version == 'nobuffer':       
+        buf_x, all_labels, all_tasklabels = model.buffer_nobuffer.get_all_data(transform=model.transform)
+
+        all_features = []
+        for i in range(0, buf_x.shape[0], model.args.batch_size):
+            inputs = buf_x[i: i+model.args.batch_size]
+            current_labels = all_tasklabels[i: i+model.args.batch_size]
+            inputs = inputs.to(model.device)
+
+            if feat_or_log=="features":
+                features = model.net.forward(inputs, returnt="features").detach().cpu()
+            elif feat_or_log=="logits":
+                features = model.net.forward(inputs, task_label=current_labels).detach().cpu()
+
             all_features.append(features)
         all_features = torch.cat(all_features, dim=0)
     elif version == 'train_dataset' or version == 'test_dataset':
@@ -168,6 +171,9 @@ def get_features(model, dataset, version):
             dataloader = dataset.all_test_loaders
 
         for current_task, source in enumerate(dataloader):
+            if current_task > max_task:
+                break
+
             for data in source:
                 if version == 'train_dataset':
                     if hasattr(dataloader[current_task].dataset, 'logits'):
@@ -178,8 +184,14 @@ def get_features(model, dataset, version):
                     inputs, labels = data
 
                 inputs = inputs.to(model.device)
-                current_features = (model.net.forward(inputs, returnt="features")).detach().cpu()
-                all_features.append(current_features)
+
+                if feat_or_log=="features":
+                    features = model.net.forward(inputs, returnt="features").detach().cpu()
+                elif feat_or_log=="logits":
+                    task_label = torch.ones(labels.shape[0], dtype=torch.int64, device=model.device) * current_task
+                    features = model.net.forward(inputs, task_label=task_label).detach().cpu()
+
+                all_features.append(features)
                 all_labels.append(labels)
                 all_tasklabels.append(torch.ones(labels.shape[0], dtype=torch.int64) * current_task)
 

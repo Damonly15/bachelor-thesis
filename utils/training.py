@@ -20,7 +20,8 @@ from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.status import ProgressBar
 from utils.feature_forgetting import feature_forgetting, buffer_forgetting
-from utils.NC_metrics import evaluate_NC_metrics, calculate_mean_distance, log_NC
+from utils.loggers_NC import LoggerNC
+from utils import create_if_not_exists
 
 try:
     import wandb
@@ -78,7 +79,8 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
             inputs, labels = data
             inputs, labels = inputs.to(model.device), labels.to(model.device)
             if (model.args.training_setting == 'task-il') and ('task-il' in model.COMPATIBILITY):
-                outputs = model.net.forward(inputs, task_label=k)
+                task_label = torch.ones(labels.shape[0], dtype=torch.int64, device=model.device) * k
+                outputs = model.net.forward(inputs, task_label=task_label)
                 labels = labels - (k*dataset.N_CLASSES_PER_TASK)
             elif (model.args.training_setting == 'task-il'):
                 outputs = model(inputs)
@@ -132,35 +134,28 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     model.net.to(model.device)
     results, results_mask_classes = [], []
 
-    if (args.log_feature_forgetting != 'output') or args.log_NC_metrics:
-        dataset_copy = get_dataset(args)
-        all_train_loaders = []
-        all_test_loaders = []
-        for i in range(dataset.N_TASKS):
-            train_loader, test_loader = dataset_copy.get_data_loaders()
-            all_train_loaders.append(train_loader)
-            all_test_loaders.append(test_loader)
-        
-        dataset.all_train_loaders = all_train_loaders
-        dataset.all_test_loaders = all_test_loaders
+    dataset_copy = get_dataset(args)
+    all_train_loaders = []
+    all_test_loaders = []
+    for i in range(dataset.N_TASKS):
+        train_loader, test_loader = dataset_copy.get_data_loaders()
+        all_train_loaders.append(train_loader)
+        all_test_loaders.append(test_loader)
+    
+    dataset.all_train_loaders = all_train_loaders
+    dataset.all_test_loaders = all_test_loaders
 
     logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
-    if (args.log_feature_forgetting == 'features') or (args.log_feature_forgetting == 'buffer'):
+    if (args.log_feature_forgetting):
         feature_forgetting_loggers = []
         feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))
-    elif (args.log_feature_forgetting == 'all'):
-        feature_forgetting_loggers = []
-        feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))
-        feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))
+        feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))   
+
+    if (model.NAME == "er" and args.buffer_size >= dataset.N_CLASSES):
+        buffer_forgetting_logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
 
     if args.log_NC_metrics:
-        NC_metrics = [[], [], []]
-
-    if args.start_from is not None:
-        for i in range(args.start_from):
-            train_loader, _ = dataset.get_data_loaders()
-            model.meta_begin_task(dataset)
-            model.meta_end_task(dataset)
+        logger_NC = LoggerNC(model)
 
     if args.loadcheck is not None:
         model, past_res = mammoth_load_checkpoint(args, model)
@@ -182,16 +177,16 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             random_results_class, random_results_task = evaluate(model, dataset_copy)
 
     print(file=sys.stderr)
-    start_task = 0 if args.start_from is None else args.start_from
     end_task = dataset.N_TASKS if args.stop_after is None else args.stop_after
 
     torch.cuda.empty_cache()
-    for t in range(start_task, end_task):
+
+    for t in range(0, end_task):
         model.net.train()
         train_loader, test_loader = dataset.get_data_loaders()
         model.meta_begin_task(dataset)
 
-        if (not args.inference_only) and (not (args.joint and t != end_task-1)): #if joint training last task contains all samples
+        if (not args.inference_only) and (not (args.joint and t != end_task-1)) and (t >= args.start_from): #if joint training last task contains all samples
             if t and args.enable_other_metrics:
                 accs = evaluate(model, dataset, last=True)
                 results[t - 1] = results[t - 1] + accs[0]
@@ -247,31 +242,18 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
         log_accs(args, logger, accs, t, dataset.SETTING)
 
-        if(args.log_feature_forgetting == 'features'):
-            full_accuracies = feature_forgetting(model, dataset, args.training_setting)
+        if(args.log_feature_forgetting):
+            full_accuracies = feature_forgetting(model, dataset, 'class-il')
             log_accs(args, feature_forgetting_loggers[0], (full_accuracies, full_accuracies), t, dataset.SETTING)
-        elif(args.log_feature_forgetting == 'buffer'):
+            full_accuracies = feature_forgetting(model, dataset, 'task-il')
+            log_accs(args, feature_forgetting_loggers[1], (full_accuracies, full_accuracies), t, dataset.SETTING)   
+        
+        if (model.NAME == "er" and args.buffer_size >= dataset.N_CLASSES):
             full_accuracies = buffer_forgetting(model, dataset, args.training_setting)
-            log_accs(args, feature_forgetting_loggers[0], (full_accuracies, full_accuracies), t, dataset.SETTING)
-        elif(args.log_feature_forgetting == 'all'):
-            full_accuracies = feature_forgetting(model, dataset, args.training_setting)
-            log_accs(args, feature_forgetting_loggers[0], (full_accuracies, full_accuracies), t, dataset.SETTING)
-            full_accuracies = buffer_forgetting(model, dataset, args.training_setting)
-            log_accs(args, feature_forgetting_loggers[1], (full_accuracies, full_accuracies), t, dataset.SETTING)
+            log_accs(args, buffer_forgetting_logger, (full_accuracies, full_accuracies), t, dataset.SETTING)   
 
         if args.log_NC_metrics:  
-            if args.buffer_size != 0:
-                buffer_metrics, buffer_means = evaluate_NC_metrics(model, dataset, 'buffer') #replay buffer
-            train_metrics, train_means = evaluate_NC_metrics(model, dataset, 'train_dataset') #train dataset
-            test_metrics, test_means = evaluate_NC_metrics(model, dataset, 'test_dataset') #test dataset
-
-            if args.buffer_size != 0:
-                NC_metrics[0].append(buffer_metrics + (calculate_mean_distance(buffer_means, test_means[:model.n_seen_classes], model.cpt, 'norm'), calculate_mean_distance(buffer_means, test_means[:model.n_seen_classes], model.cpt, 'cos')))
-            NC_metrics[1].append(train_metrics + (calculate_mean_distance(train_means, test_means, model.cpt, 'norm'), calculate_mean_distance(train_means, test_means, model.cpt, 'cos')))
-            if args.buffer_size != 0:
-                NC_metrics[2].append(test_metrics + (calculate_mean_distance(buffer_means, train_means[:model.n_seen_classes], model.cpt, 'norm'), calculate_mean_distance(buffer_means, train_means[:model.n_seen_classes], model.cpt, 'cos')))
-            else:
-                NC_metrics[2].append(test_metrics + (calculate_mean_distance(test_means, test_means, model.cpt, 'norm'), calculate_mean_distance(test_means, test_means, model.cpt, 'cos')))
+            logger_NC.log(dataset, model)
 
         if args.savecheck:
             save_obj = {
@@ -283,9 +265,14 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             }
             if 'buffer_size' in model.args:
                 save_obj['buffer'] = deepcopy(model.buffer).to('cpu')
+            if hasattr(model, 'buffer_refitting'):
+                save_obj['buffer_refitting'] = deepcopy(model.buffer_refitting).to('cpu')
+            if hasattr(model, 'buffer_nobuffer'):
+                save_obj['buffer_nobuffer'] = deepcopy(model.buffer_nobuffer).to('cpu')
 
             # Saving model checkpoint
             checkpoint_name = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{t}.pt'
+            create_if_not_exists(f'/cluster/scratch/dammeier/mammoth_checkpoints')
             torch.save(save_obj, checkpoint_name)
 
         #increase this at the end of a task    
@@ -315,20 +302,15 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             d['wandb_url'] = wandb.run.get_url()
             wandb.log(d)
 
-    if((args.log_feature_forgetting == 'features') or (args.log_feature_forgetting == 'all')):
-        feature_forgetting_loggers[0].write(vars(args), 'features')
+    if args.log_feature_forgetting:
+        feature_forgetting_loggers[0].write(vars(args), 'features_cil')
+        feature_forgetting_loggers[1].write(vars(args), 'features_til')
 
-        if(args.log_feature_forgetting == 'all'):
-            feature_forgetting_loggers[1].write(vars(args), 'buffer')
-    elif(args.log_feature_forgetting == 'buffer'):
-        feature_forgetting_loggers[0].write(vars(args), 'buffer')
-
+    if (model.NAME == "er" and args.buffer_size >= dataset.N_CLASSES):
+        buffer_forgetting_logger.write(vars(args), 'buffer')
 
     if args.log_NC_metrics:
-        if args.buffer_size != 0:
-            log_NC(model, "buffer", NC_metrics[0])
-        log_NC(model, "train_dataset", NC_metrics[1])
-        log_NC(model, "test_dataset", NC_metrics[2])
+        logger_NC.write(model)
 
     if not args.nowand:
         wandb.finish()

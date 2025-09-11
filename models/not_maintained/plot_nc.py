@@ -14,14 +14,18 @@ Example usage:
 # LICENSE file in the root directory of this source tree.
 
 import torch
+import pandas as pd
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
 from utils.buffer import Buffer
+from utils.feature_forgetting import get_features
+from utils.NC_metrics import evaluate_NC_metrics
+from utils.conf import base_path
 
 
-class ErBounds(ContinualModel):
-    NAME = 'er_bounds'
+class PlotNC(ContinualModel):
+    NAME = 'plot_nc'
     #this needs task boundaries
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il']
 
@@ -40,13 +44,29 @@ class ErBounds(ContinualModel):
         """
         The ER model maintains a buffer of previously seen examples and uses them to augment the current batch during training.
         """
-        super(ErBounds, self).__init__(backbone, loss, args, transform)
+        super(PlotNC, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
+        self.dataset_object = None
+        self.epoch_counter = 0
+        self.evaluation_epochs = args.n_epochs//10 #adapt
+
+        column_names = ['task', 'epoch']
+        for i in range(10):
+            column_names.append(f'within_var_{i+1}')
+        for i in range(10): 
+            column_names.append(f'between_var_{i+1}')
+        self.df_NC = pd.DataFrame(columns=column_names)
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
         ER trains on the current task using the data provided, but also augments the batch with data from the buffer.
         """
+        if self.epoch_counter == epoch:
+            if (self.epoch_counter % self.evaluation_epochs) == 0:
+                (within_var, between_var, _, _, _, _, _), _= evaluate_NC_metrics(self, self.dataset_object, 'train_dataset')
+                new_column = [self.current_task+1, self.current_task*self.args.n_epochs + epoch] + within_var + between_var
+                self.df_NC.loc[len(self.df_NC)] = new_column
+            self.epoch_counter+=1
 
         self.opt.zero_grad()
 
@@ -71,17 +91,18 @@ class ErBounds(ContinualModel):
         loss.backward()
                       
         self.opt.step()
-
         return loss.item()
     
+    def begin_task(self, dataset):
+        self.dataset_object = dataset
+
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
             
         examples_per_class = self.args.buffer_size // ((self.current_task + 1) * self.cpt)
         remainder = self.args.buffer_size % ((self.current_task + 1) * self.cpt)
         ones_indices = torch.randperm(self.n_seen_classes)[:remainder]
         remainder = torch.zeros(self.n_seen_classes)
-        if not self.args.buffer_size == dataset.N_CLASSES: #in this case just use one sample per class
-            remainder[ones_indices] = 1
+        remainder[ones_indices] = 1
 
         # fdr reduce coreset
         if not self.buffer.is_empty():
@@ -116,4 +137,14 @@ class ErBounds(ContinualModel):
             self.buffer.add_data(examples=not_aug_inputs[flags],
                                     labels=labels[flags],
                                     task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
+        
+        self.epoch_counter = 0
+        if (self.current_task + 1== dataset.N_TASKS):
+            (within_var, between_var, _, _, _, _, _), _= evaluate_NC_metrics(self, self.dataset_object, 'train_dataset')
+            new_column = [self.current_task+1, (self.current_task+1)*self.args.n_epochs] + within_var + between_var
+            self.df_NC.loc[len(self.df_NC)] = new_column
+
+            path = base_path() + f'dataframes/nc/{self.args.dataset}_{self.args.buffer_size}_{self.args.seed}.csv'
+            self.df_NC.to_csv(path, index=False)
         return
+    

@@ -15,6 +15,8 @@ Example usage:
 
 import torch
 from torch.optim import Adam
+from torch.func import vmap, grad, functional_call
+from functorch import make_functional
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
@@ -22,8 +24,8 @@ from utils.buffer import Buffer
 from utils.training import evaluate
 from utils.feature_forgetting import feature_forgetting_cil
 
-class Er(ContinualModel):
-    NAME = 'er'
+class ErExtra(ContinualModel):
+    NAME = 'er_extra'
     #this needs task boundaries
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il']
 
@@ -42,7 +44,7 @@ class Er(ContinualModel):
         """
         The ER model maintains a buffer of previously seen examples and uses them to augment the current batch during training.
         """
-        super(Er, self).__init__(backbone, loss, args, transform)
+        super(ErExtra, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
         self.buffer_nobuffer = Buffer(self.dataset.N_SAMPLES - self.args.buffer_size)
 
@@ -50,6 +52,14 @@ class Er(ContinualModel):
         ones_indices = torch.randperm(self.dataset.N_CLASSES)[:remainder]
         self.remainder = torch.zeros(self.dataset.N_CLASSES)
         self.remainder[ones_indices] = 1  
+
+        self.gradient_sv = []
+        self.input_storage = []
+        self.labels_storage = []
+        self.tasklabels_storage = []
+        if self.net is not None:
+            self.fmodel = self.net  # just reference the module
+            self.fparams = dict(self.net.named_parameters())  # get the parameters
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
@@ -70,17 +80,67 @@ class Er(ContinualModel):
             
             task_labels = torch.cat((task_labels, buf_tasklabels), dim=0)
             if self.args.training_setting == 'task-il':
-                buf_labels = buf_labels - (buf_tasklabels*self.cpt)   
+                buf_labels = buf_labels - (buf_tasklabels*self.cpt)  
             inputs = torch.cat((inputs, buf_inputs), dim=0)
             labels = torch.cat((labels, buf_labels), dim=0)
 
-        outputs = self.net.forward(inputs, task_label=task_labels)
+
+        if epoch + 1 == self.dataset.get_epochs():
+            self.input_storage.append(inputs)
+            self.labels_storage.append(labels)
+            self.tasklabels_storage.append(task_labels)
+            if len(self.input_storage) == 1:
+                status = self.net.training
+                self.net.eval()
+
+                inputs = torch.cat(self.input_storage, dim=0)
+                self.input_storage = []
+                labels = torch.cat(self.labels_storage, dim=0)
+                self.labels_storage = []
+                task_labels = torch.cat(self.tasklabels_storage, dim=0)
+                self.tasklabels_storage = []
+
+                # Vectorized per-sample gradient computation
+                per_sample_grads = vmap(self._grad_per_sample, in_dims=(None, 0, 0, 0))(
+                    self.fparams, inputs, labels, task_labels
+                )
+
+                batch_size = inputs.shape[0]
+
+                # Flatten each parameter's gradient per sample
+                flattened_grads = [g.detach().reshape(batch_size, -1) for g in per_sample_grads.values()]
+
+                # Concatenate all flattened gradients along the feature dimension
+                grad_matrix = torch.cat(flattened_grads, dim=1)
+
+                # Compute SVD
+                U, S, Vh = torch.linalg.svd(grad_matrix, full_matrices=False)
+                self.gradient_sv.append(S.cpu())
+
+                self.net.train(status)
+            else:
+                return 0
+
+        outputs = self.net(inputs, task_label=task_labels)
         loss = self.loss(outputs, labels)
         loss.backward()
-                      
         self.opt.step()
 
         return loss.item()
+        
+    
+    def _compute_loss(self, params, x, y, task_label):
+        preds = functional_call(
+            self.fmodel,
+            params,
+            (x, task_label),  # matches forward(x, task_label)
+        )
+        loss = self.loss(preds, y)
+        return loss
+
+    def _grad_per_sample(self, params, x, y, task_label):
+        return grad(self._compute_loss)(params, x.unsqueeze(0), y.unsqueeze(0), task_label.unsqueeze(0))
+
 
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
         examples_per_class = self.args.buffer_size // dataset.N_CLASSES

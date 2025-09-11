@@ -9,7 +9,6 @@ This module implements the simplest form of incremental training, i.e., finetuni
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser
-from datasets.seq_cifar10 import SequentialCIFAR10
 from datasets.seq_cifar100 import SequentialCIFAR100
 from datasets.seq_tinyimagenet import SequentialTinyImagenet
 from datasets.seq_cub200 import SequentialCUB200
@@ -30,14 +29,7 @@ class Sgd(ContinualModel):
 
     def __init__(self, backbone, loss, args, transform):
         super(Sgd, self).__init__(backbone, loss, args, transform)
-        if args.dataset=='seq-cifar10':
-            self.cpt_dataset = SequentialCIFAR10.N_CLASSES_PER_TASK
-        elif args.dataset=='seq-cifar100':
-            self.cpt_dataset = SequentialCIFAR100.N_CLASSES_PER_TASK
-        elif args.dataset=='seq-tinyimg':
-            self.cpt_dataset = SequentialTinyImagenet.N_CLASSES_PER_TASK
-        elif args.dataset=='seq-cub200':
-            self.cpt_dataset = SequentialCUB200.N_CLASSES_PER_TASK
+        
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
@@ -47,8 +39,8 @@ class Sgd(ContinualModel):
         if self.args.training_setting == "class-il":
             task_labels=None
         else:
-            task_labels = labels // self.cpt_dataset
-            labels = labels - (task_labels*self.cpt_dataset)
+            task_labels = labels // self.cpt
+            labels = labels - (task_labels*self.cpt)
 
         outputs = self.net.forward(inputs, task_label=task_labels)
         loss = self.loss(outputs, labels)

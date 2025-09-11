@@ -5,8 +5,9 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-from timm import create_model
+from torchvision.transforms.functional import InterpolationMode
 
+from backbone.vit import vit_backbone
 from datasets.seq_cifar100 import TCIFAR100, MyCIFAR100
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
@@ -36,17 +37,20 @@ class SequentialCIFAR100224(ContinualDataset):
     N_CLASSES_PER_TASK = 10
     N_TASKS = 10
     N_CLASSES = 100
+    N_SAMPLES = 50000
     SIZE = (224, 224)
-    MEAN, STD = (0, 0, 0), (1, 1, 1)  # Normalized in [0,1] as in L2P paper
-    TRANSFORM = transforms.Compose(
-        [transforms.Resize(224),
-         transforms.RandomCrop(224, padding=28),
-         transforms.RandomHorizontalFlip(),
-         transforms.ToTensor(),
-         transforms.Normalize(MEAN, STD)]
-    )
-    TEST_TRANSFORM = transforms.Compose(
-        [transforms.Resize(224), transforms.ToTensor(), transforms.Normalize(MEAN, STD)])
+    MEAN, STD = (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
+    TRANSFORM = transforms.Compose([
+        transforms.RandomResizedCrop(224, interpolation=InterpolationMode.BICUBIC),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ToTensor(),
+        transforms.Normalize(MEAN, STD)
+    ])
+    TEST_TRANSFORM = transforms.Compose([
+        transforms.Resize(224, interpolation=InterpolationMode.BICUBIC),
+        transforms.ToTensor(),
+        transforms.Normalize(MEAN, STD)
+    ])
 
     def get_data_loaders(self) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
         transform = self.TRANSFORM
@@ -69,13 +73,14 @@ class SequentialCIFAR100224(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone(hookme=False):
-        model_name = 'vit_base_patch16_224'
-        return create_model(
-            model_name,
-            pretrained=True,
-            num_classes=SequentialCIFAR100224.N_CLASSES
-        )
+    def get_backbone(args, model_compatibility):
+        num_classes = SequentialCIFAR100224.N_CLASSES_PER_TASK * SequentialCIFAR100224.N_TASKS
+        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
+            cpt = SequentialCIFAR100224.N_CLASSES_PER_TASK #get backbone with different heads
+        else:
+            cpt = -1
+            
+        return vit_backbone(num_classes, pretrained=True, cpt=cpt)
 
     @staticmethod
     def get_loss():
@@ -93,7 +98,7 @@ class SequentialCIFAR100224(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 5
+        return 10
 
     @staticmethod
     def get_batch_size():

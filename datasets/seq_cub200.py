@@ -146,6 +146,7 @@ class SequentialCUB200(ContinualDataset):
     N_CLASSES_PER_TASK = 20
     N_TASKS = 10
     N_CLASSES = N_CLASSES_PER_TASK * N_TASKS
+    N_SAMPLES = 12000
     SIZE = (MyCUB200.IMG_SIZE, MyCUB200.IMG_SIZE)
     MEAN, STD = (0.4856, 0.4994, 0.4324), (0.2272, 0.2226, 0.2613)
     TRANSFORM = transforms.Compose([
@@ -181,16 +182,27 @@ class SequentialCUB200(ContinualDataset):
     @staticmethod
     def get_backbone(args, model_compatibility):
         num_classes = SequentialCUB200.N_CLASSES
+
         if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
             cpt = SequentialCUB200.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1
+
+        bias=True
+        if args.model == 'er_wa':
+            bias=False
             
-        return resnet50(num_classes, pretrained=True, cpt=cpt)
+        return resnet50(num_classes, pretrained=True, cpt=cpt, bias=bias)
 
     @staticmethod
     def get_loss():
         return F.cross_entropy
+        #def loss_fn(input, target):
+        #    num_classes = input.size(1)
+        #    target_one_hot = F.one_hot(target, num_classes=num_classes).type_as(input)
+        #    input_probs = F.softmax(input, dim=1)  # Convert logits to probabilities
+        #    return F.mse_loss(input_probs, target_one_hot)
+        #return loss_fn
 
     @staticmethod
     def get_normalization_transform():
@@ -205,8 +217,8 @@ class SequentialCUB200(ContinualDataset):
 
     @staticmethod
     def get_batch_size():
-        return 16
+        return 32
 
     @staticmethod
     def get_epochs():
-        return 30
+        return 40
