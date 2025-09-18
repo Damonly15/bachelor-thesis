@@ -277,7 +277,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         log_accs(args, logger, accs, t, final_dataset.SETTING, prefix="FINAL")
 
     if not args.disable_log and args.enable_other_metrics:
-        logger.add_forgetting(results)
+        logger.add_forgetting()
 
     if not args.disable_log:
         logger.write(vars(args), 'output')
@@ -287,10 +287,18 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             wandb.log(d)
 
     if args.log_feature_forgetting:
+        if args.enable_other_metrics:
+            feature_forgetting_loggers[0].add_forgetting()
         feature_forgetting_loggers[0].write(vars(args), 'features_cil')
+
         if dataset.SETTING != 'domain-il':
+            if args.enable_other_metrics:
+                feature_forgetting_loggers[1].add_forgetting()
             feature_forgetting_loggers[1].write(vars(args), 'features_til')
+
         if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
+            if args.enable_other_metrics:
+                clustering_forgetting_logger.add_forgetting()
             clustering_forgetting_logger.write(vars(args), 'buffer')
 
     if args.log_NC_metrics:

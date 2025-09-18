@@ -10,6 +10,7 @@ This module contains the Logger class and related functions for logging accuracy
 from contextlib import suppress
 import sys
 from typing import Any, Dict
+import copy
 
 import numpy as np
 
@@ -91,7 +92,7 @@ def print_mean_accuracy(accs: np.ndarray, task_number: int,
                                                                 task_number, round(mean_acc, 2)), file=sys.stderr)
         print('\tRaw accuracy values: Domain-IL {}'.format(accs), file=sys.stderr)
     else:
-        print('\n{} for {} task(s): \t [Class-IL]: {}'.format(prefix, task_number, round(mean_acc, 2), file=sys.stderr))
+        print('\n{} for {} task(s): \t [Class-IL]: {}'.format(prefix, task_number, round(mean_acc, 2)), file=sys.stderr)
         print('\tRaw accuracy values: Class-IL {}'.format(accs,), file=sys.stderr)
 
     return mean_acc
@@ -178,7 +179,7 @@ class Logger:
         self.bwt = backward_transfer(results)
         self.bwt_mask_classes = backward_transfer(results_mask_classes)
 
-    def add_forgetting(self, results):
+    def add_forgetting(self):
         """
         Adds forgetting values.
 
@@ -186,7 +187,7 @@ class Logger:
             results: The results.
             results_mask_classes: The results for masked classes.
         """
-        self.forgetting = forgetting(results)
+        self.forgetting = forgetting(copy.deepcopy(self.fullaccs))
         #self.forgetting_mask_classes = forgetting(results_mask_classes)
 
     def log(self, mean_acc: np.ndarray) -> None:
