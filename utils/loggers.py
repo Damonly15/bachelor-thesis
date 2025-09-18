@@ -36,7 +36,7 @@ def log_accs(args, logger, accs, t, setting, epoch=None, prefix="RESULT"):
         prefix: The prefix for the metrics (default="RESULT").
     """
     t += 1
-    mean_acc = print_mean_accuracy(accs, t, setting, joint=args.joint, epoch=epoch)
+    mean_acc = print_mean_accuracy(accs, t, setting, epoch=epoch)
 
     if not args.disable_log:
         logger.log(mean_acc)
@@ -44,21 +44,20 @@ def log_accs(args, logger, accs, t, setting, epoch=None, prefix="RESULT"):
 
     if not args.nowand:
         postfix = "" #"" if epoch is None else f"_epoch_{epoch}"
-        if setting == 'domain-il' or setting == 'general-continual':
+        if setting == 'general-continual':
             d2 = {f'{prefix}_domain_mean_accs{postfix}': mean_acc,
-                **{f'{prefix}_domain_acc_{i}{postfix}': a for i, a in enumerate(accs[0])},
+                **{f'{prefix}_domain_acc_{i}{postfix}': a for i, a in enumerate(accs)},
                 'Task': t}
         else:
-            d2 = {f'{prefix}_class_mean_accs{postfix}': mean_acc[0], f'{prefix}_task_mean_accs{postfix}': mean_acc[1],
-                **{f'{prefix}_class_acc_{i}{postfix}': a for i, a in enumerate(accs[0])},
-                **{f'{prefix}_task_acc_{i}{postfix}': a for i, a in enumerate(accs[1])},
+            d2 = {f'{prefix}_class_mean_accs{postfix}': mean_acc,
+                **{f'{prefix}_class_acc_{i}{postfix}': a for i, a in enumerate(accs)},
                 'Task': t}
 
         wandb.log(d2)
 
 
 def print_mean_accuracy(accs: np.ndarray, task_number: int,
-                        setting: str, joint=False, epoch=None) -> None:
+                        setting: str, epoch=None) -> None:
     """
     Prints the mean accuracy on stderr.
 
@@ -72,9 +71,9 @@ def print_mean_accuracy(accs: np.ndarray, task_number: int,
     Returns:
         The mean accuracy value.
     """
-    mean_acc = np.mean(accs, axis=1)
+    mean_acc = np.mean(accs, axis=0)
 
-    if joint:
+    """ if joint:
         prefix = "Joint Accuracy" if epoch is None else f"Joint Accuracy (epoch {epoch})"
         if setting == 'domain-il' or setting == 'general-continual':
             mean_acc, _ = mean_acc
@@ -85,18 +84,15 @@ def print_mean_accuracy(accs: np.ndarray, task_number: int,
             print('\n{}: \t [Class-IL]: {} % \t [Task-IL]: {} %'.format(prefix, round(
                 mean_acc_class_il, 2), round(mean_acc_task_il, 2)), file=sys.stderr)
             print('\tRaw accuracy values: Class-IL {} | Task-IL {}'.format(accs[0], accs[1]), file=sys.stderr)
+    else:"""
+    prefix = "Accuracy" if epoch is None else f"Accuracy (epoch {epoch})"
+    if setting == 'general-continual':
+        print('\n{} for {} task(s): [Domain-IL]: {} %'.format(prefix,
+                                                                task_number, round(mean_acc, 2)), file=sys.stderr)
+        print('\tRaw accuracy values: Domain-IL {}'.format(accs), file=sys.stderr)
     else:
-        prefix = "Accuracy" if epoch is None else f"Accuracy (epoch {epoch})"
-        if setting == 'domain-il' or setting == 'general-continual':
-            mean_acc, _ = mean_acc
-            print('\n{} for {} task(s): [Domain-IL]: {} %'.format(prefix,
-                                                                  task_number, round(mean_acc, 2)), file=sys.stderr)
-            print('\tRaw accuracy values: Domain-IL {}'.format(accs[0]), file=sys.stderr)
-        else:
-            mean_acc_class_il, mean_acc_task_il = mean_acc
-            print('\n{} for {} task(s): \t [Class-IL]: {} % \t [Task-IL]: {} %'.format(prefix, task_number, round(
-                mean_acc_class_il, 2), round(mean_acc_task_il, 2)), file=sys.stderr)
-            print('\tRaw accuracy values: Class-IL {} | Task-IL {}'.format(accs[0], accs[1]), file=sys.stderr)
+        print('\n{} for {} task(s): \t [Class-IL]: {}'.format(prefix, task_number, round(mean_acc, 2), file=sys.stderr))
+        print('\tRaw accuracy values: Class-IL {}'.format(accs,), file=sys.stderr)
 
     return mean_acc
 
@@ -114,18 +110,10 @@ class Logger:
         """
         self.accs = []
         self.fullaccs = []
-        if setting_str == 'class-il':
-            self.accs_mask_classes = []
-            self.fullaccs_mask_classes = []
         self.setting = setting_str
         self.dataset = dataset_str
         self.model = model_str
-        self.fwt = None
-        self.fwt_mask_classes = None
-        self.bwt = None
-        self.bwt_mask_classes = None
         self.forgetting = None
-        self.forgetting_mask_classes = None
 
     def dump(self):
         """
@@ -137,16 +125,8 @@ class Logger:
         dic = {
             'accs': self.accs,
             'fullaccs': self.fullaccs,
-            'fwt': self.fwt,
-            'bwt': self.bwt,
             'forgetting': self.forgetting,
-            'fwt_mask_classes': self.fwt_mask_classes,
-            'bwt_mask_classes': self.bwt_mask_classes,
-            'forgetting_mask_classes': self.forgetting_mask_classes,
         }
-        if self.setting == 'class-il':
-            dic['accs_mask_classes'] = self.accs_mask_classes
-            dic['fullaccs_mask_classes'] = self.fullaccs_mask_classes
 
         return dic
 
@@ -159,15 +139,7 @@ class Logger:
         """
         self.accs = dic['accs']
         self.fullaccs = dic['fullaccs']
-        self.fwt = dic['fwt']
-        self.bwt = dic['bwt']
         self.forgetting = dic['forgetting']
-        self.fwt_mask_classes = dic['fwt_mask_classes']
-        self.bwt_mask_classes = dic['bwt_mask_classes']
-        self.forgetting_mask_classes = dic['forgetting_mask_classes']
-        if self.setting == 'class-il':
-            self.accs_mask_classes = dic['accs_mask_classes']
-            self.fullaccs_mask_classes = dic['fullaccs_mask_classes']
 
     def rewind(self, num):
         """
@@ -179,16 +151,7 @@ class Logger:
         self.accs = self.accs[:-num]
         self.fullaccs = self.fullaccs[:-num]
         with suppress(BaseException):
-            self.fwt = self.fwt[:-num]
-            self.bwt = self.bwt[:-num]
             self.forgetting = self.forgetting[:-num]
-            self.fwt_mask_classes = self.fwt_mask_classes[:-num]
-            self.bwt_mask_classes = self.bwt_mask_classes[:-num]
-            self.forgetting_mask_classes = self.forgetting_mask_classes[:-num]
-
-        if self.setting == 'class-il':
-            self.accs_mask_classes = self.accs_mask_classes[:-num]
-            self.fullaccs_mask_classes = self.fullaccs_mask_classes[:-num]
 
     def add_fwt(self, results, accs, results_mask_classes, accs_mask_classes):
         """
@@ -215,7 +178,7 @@ class Logger:
         self.bwt = backward_transfer(results)
         self.bwt_mask_classes = backward_transfer(results_mask_classes)
 
-    def add_forgetting(self, results, results_mask_classes):
+    def add_forgetting(self, results):
         """
         Adds forgetting values.
 
@@ -224,7 +187,7 @@ class Logger:
             results_mask_classes: The results for masked classes.
         """
         self.forgetting = forgetting(results)
-        self.forgetting_mask_classes = forgetting(results_mask_classes)
+        #self.forgetting_mask_classes = forgetting(results_mask_classes)
 
     def log(self, mean_acc: np.ndarray) -> None:
         """
@@ -233,14 +196,7 @@ class Logger:
         Args:
             mean_acc: mean accuracy value
         """
-        if self.setting == 'general-continual':
-            self.accs.append(mean_acc)
-        elif self.setting == 'domain-il':
-            self.accs.append(mean_acc)
-        else:
-            mean_acc_class_il, mean_acc_task_il = mean_acc
-            self.accs.append(mean_acc_class_il)
-            self.accs_mask_classes.append(mean_acc_task_il)
+        self.accs.append(mean_acc)
 
     def log_fullacc(self, accs):
         """
@@ -249,10 +205,7 @@ class Logger:
         Args:
             accs: the accuracy values
         """
-        if self.setting == 'class-il':
-            acc_class_il, acc_task_il = accs
-            self.fullaccs.append(acc_class_il)
-            self.fullaccs_mask_classes.append(acc_task_il)
+        self.fullaccs.append(accs)
 
     def write(self, args: Dict[str, Any], result_type) -> None:
         """
@@ -268,50 +221,32 @@ class Logger:
 
         target_folder = base_path() + "results/"
 
-        if args["training_setting"] == "class-il": #here we log to class-il accuracies
-            for i, acc in enumerate(self.accs):
-                wrargs['accmean_task' + str(i + 1)] = acc
+        for i, acc in enumerate(self.accs):
+            wrargs['accmean_task' + str(i + 1)] = acc
 
-            for i, fa in enumerate(self.fullaccs):
-                for j, acc in enumerate(fa):
-                    wrargs['accuracy_' + str(j + 1) + '_task' + str(i + 1)] = acc
+        for i, fa in enumerate(self.fullaccs):
+            for j, acc in enumerate(fa):
+                wrargs['accuracy_' + str(j + 1) + '_task' + str(i + 1)] = acc
 
-            wrargs['forward_transfer'] = self.fwt
-            wrargs['backward_transfer'] = self.bwt
-            wrargs['forgetting'] = self.forgetting
+        wrargs['forgetting'] = self.forgetting
 
+        if args["training_setting"] == "task-il":
+            create_if_not_exists(target_folder + "task-il")
+            create_if_not_exists(target_folder + "task-il" +
+                                "/" + self.dataset)
+            create_if_not_exists(target_folder + "task-il" +
+                                "/" + self.dataset + "/" + self.model)
+            path = target_folder + "task-il" + "/" + self.dataset\
+                + "/" + self.model + "/logs.txt"
+        else:
             create_if_not_exists(target_folder + self.setting)
             create_if_not_exists(target_folder + self.setting +
                                 "/" + self.dataset)
             create_if_not_exists(target_folder + self.setting +
                                 "/" + self.dataset + "/" + self.model)
-
             path = target_folder + self.setting + "/" + self.dataset\
                 + "/" + self.model + "/logs.txt"
-            
-            print("Logging results and arguments in " + path)
-            with open(path, 'a') as f:
-                f.write(str(wrargs) + '\n')
-
-        if self.setting == 'class-il' and args["training_setting"] == "task-il":
-            create_if_not_exists(smart_joint(*[target_folder, "task-il/", self.dataset]))
-            create_if_not_exists(target_folder + "task-il/"
-                                 + self.dataset + "/" + self.model)
-
-            for i, acc in enumerate(self.accs_mask_classes):
-                wrargs['accmean_task' + str(i + 1)] = acc
-
-            for i, fa in enumerate(self.fullaccs_mask_classes):
-                for j, acc in enumerate(fa):
-                    wrargs['accuracy_' + str(j + 1) + '_task' + str(i + 1)] = acc
-
-            wrargs['forward_transfer'] = self.fwt_mask_classes
-            wrargs['backward_transfer'] = self.bwt_mask_classes
-            wrargs['forgetting'] = self.forgetting_mask_classes
-
-            path = target_folder + "task-il" + "/" + self.dataset + "/"\
-                + self.model + "/logs.txt"
-            
-            print("Logging Task-IL results and arguments in " + path)
-            with open(path, 'a') as f:
-                f.write(str(wrargs) + '\n')
+        
+        print("Logging results and arguments in " + path)
+        with open(path, 'a') as f:
+            f.write(str(wrargs) + '\n')

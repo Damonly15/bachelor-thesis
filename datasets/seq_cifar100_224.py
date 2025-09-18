@@ -74,13 +74,12 @@ class SequentialCIFAR100224(ContinualDataset):
 
     @staticmethod
     def get_backbone(args, model_compatibility):
-        num_classes = SequentialCIFAR100224.N_CLASSES_PER_TASK * SequentialCIFAR100224.N_TASKS
         if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
             cpt = SequentialCIFAR100224.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1
             
-        return vit_backbone(num_classes, pretrained=True, cpt=cpt)
+        return vit_backbone(SequentialCIFAR100224.N_CLASSES, pretrained=True, cpt=cpt)
 
     @staticmethod
     def get_loss():

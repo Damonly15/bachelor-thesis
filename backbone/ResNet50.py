@@ -122,6 +122,7 @@ class ResNet(MammothBackbone):
         self._norm_layer = norm_layer
         self.return_prerelu = False
         self.num_classes = num_classes
+        self.feature_dim = 512 * block.expansion
         self.inplanes = 64
         self.dilation = 1
         if replace_stride_with_dilation is None:

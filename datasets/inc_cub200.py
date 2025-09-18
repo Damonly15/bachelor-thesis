@@ -127,7 +127,7 @@ class CUB200(MyCUB200):
         return ret_tuple
 
 
-class SequentialCUB200(ContinualDataset):
+class IncrementalCUB200(ContinualDataset):
     """Sequential CUB200 Dataset.
 
     Args:
@@ -141,11 +141,11 @@ class SequentialCUB200(ContinualDataset):
         TRANSFORM (torchvision.transforms): transformation to apply to the data.
         TEST_TRANSFORM (torchvision.transforms): transformation to apply to the test data.
     """
-    NAME = 'seq-cub200'
-    SETTING = 'class-il'
+    NAME = 'inc-cub200'
+    SETTING = 'domain-il'
     N_CLASSES_PER_TASK = 20
     N_TASKS = 10
-    N_CLASSES = 200
+    N_CLASSES = 20
     N_SAMPLES = 12000
     SIZE = (MyCUB200.IMG_SIZE, MyCUB200.IMG_SIZE)
     MEAN, STD = (0.4856, 0.4994, 0.4324), (0.2272, 0.2226, 0.2613)
@@ -176,18 +176,13 @@ class SequentialCUB200(ContinualDataset):
     @staticmethod
     def get_transform():
         transform = transforms.Compose(
-            [transforms.ToPILImage(), SequentialCUB200.TRANSFORM])
+            [transforms.ToPILImage(), IncrementalCUB200.TRANSFORM])
         return transform
 
     @staticmethod
     def get_backbone(args, model_compatibility):
-        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
-            cpt = SequentialCUB200.N_CLASSES_PER_TASK #get backbone with different heads
-        else:
-            cpt = -1
-        bias=True
-            
-        return resnet50(SequentialCUB200.N_CLASSES, pretrained=True, cpt=cpt, bias=bias)
+        bias=True    
+        return resnet50(IncrementalCUB200.N_CLASSES, pretrained=True, cpt=-1, bias=bias)
 
     @staticmethod
     def get_loss():
@@ -196,12 +191,12 @@ class SequentialCUB200(ContinualDataset):
     @staticmethod
     def get_normalization_transform():
         transform = transforms.Normalize(
-            SequentialCUB200.MEAN, SequentialCUB200.STD)
+            IncrementalCUB200.MEAN, IncrementalCUB200.STD)
         return transform
 
     @staticmethod
     def get_denormalization_transform():
-        transform = DeNormalize(SequentialCUB200.MEAN, SequentialCUB200.STD)
+        transform = DeNormalize(IncrementalCUB200.MEAN, IncrementalCUB200.STD)
         return transform
 
     @staticmethod

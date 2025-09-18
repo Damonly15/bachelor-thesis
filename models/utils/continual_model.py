@@ -304,9 +304,14 @@ class ContinualModel(nn.Module):
         """
         self.task_iteration = 0
         self._n_classes_current_task = self._cpt if isinstance(self._cpt, int) else self._cpt[self._current_task]
-        self._n_seen_classes = self._cpt * (self._current_task + 1) if isinstance(self._cpt, int) else sum(self._cpt[:self._current_task + 1])
-        self._n_remaining_classes = self.N_CLASSES - self._n_seen_classes
-        self._n_past_classes = self._cpt * self._current_task if isinstance(self._cpt, int) else sum(self._cpt[:self._current_task])
+        if self.SETTING != 'domain-il':
+            self._n_seen_classes = self._cpt * (self._current_task + 1) if isinstance(self._cpt, int) else sum(self._cpt[:self._current_task + 1])
+            self._n_remaining_classes = self.N_CLASSES - self._n_seen_classes
+            self._n_past_classes = self._cpt * self._current_task if isinstance(self._cpt, int) else sum(self._cpt[:self._current_task])
+        else:
+            self._n_seen_classes = self._cpt
+            self._n_remaining_classes = self._cpt
+            self._n_past_classes = self._cpt
         self.begin_task(dataset)
 
     def meta_end_task(self, dataset):
@@ -322,10 +327,8 @@ class ContinualModel(nn.Module):
 
         self.end_task(dataset)
 
-        for version in ['train_dataset', 'test_dataset', 'buffer', 'nobuffer']:
-            if version == 'nobuffer' and self.args.buffer_size == dataset.N_SAMPLES:
-                self.features[version] = get_features(self, dataset, 'train_dataset', dataset.N_TASKS)
-            elif version == 'buffer' and self.args.buffer_size < dataset.N_CLASSES:
+        for version in ['train_dataset', 'test_dataset', 'buffer']:
+            if version == 'buffer' and self.args.buffer_size < dataset.N_CLASSES:
                 self.features[version] = None
             else:
                 self.features[version] = get_features(self, dataset, version, dataset.N_TASKS)

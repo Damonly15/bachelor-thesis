@@ -101,6 +101,7 @@ class ResNet(MammothBackbone):
         self.in_planes = nf
         self.block = block
         self.num_classes = num_classes
+        self.feature_dim = nf * 8 * block.expansion
         self.nf = nf
         self.conv1 = conv3x3(3, nf * 1)
         self.bn1 = nn.BatchNorm2d(nf * 1)
@@ -109,10 +110,9 @@ class ResNet(MammothBackbone):
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
         if cpt==-1:
-            self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes, bias=bias)
+            self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes, bias=False)
         else:
-            self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt, bias=bias) for i in range(num_classes//cpt)])
-        
+            self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt, bias=False) for i in range(num_classes//cpt)])
 
     def to(self, device, **kwargs):
         self.device = device

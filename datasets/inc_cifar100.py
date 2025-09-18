@@ -70,7 +70,7 @@ class MyCIFAR100(CIFAR100):
         return img, target, not_aug_img
 
 
-class SequentialCIFAR100(ContinualDataset):
+class IncrementalCIFAR100(ContinualDataset):
     """Sequential CIFAR100 Dataset.
 
     Args:
@@ -84,11 +84,11 @@ class SequentialCIFAR100(ContinualDataset):
         STD (tuple): standard deviation of the dataset.
         TRANSFORM (torchvision.transforms): transformation to apply to the data."""
 
-    NAME = 'seq-cifar100'
-    SETTING = 'class-il'
+    NAME = 'inc-cifar100'
+    SETTING = 'domain-il'
     N_CLASSES_PER_TASK = 10
     N_TASKS = 10
-    N_CLASSES = 100
+    N_CLASSES = 10
     N_SAMPLES = 50000
     SIZE = (32, 32)
     MEAN, STD = (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
@@ -116,18 +116,13 @@ class SequentialCIFAR100(ContinualDataset):
     @staticmethod
     def get_transform():
         transform = transforms.Compose(
-            [transforms.ToPILImage(), SequentialCIFAR100.TRANSFORM])
+            [transforms.ToPILImage(), IncrementalCIFAR100.TRANSFORM])
         return transform
 
     @staticmethod
     def get_backbone(args, model_compatibility):
-        if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
-            cpt = SequentialCIFAR100.N_CLASSES_PER_TASK #get backbone with different heads
-        else:
-            cpt = -1
-        bias=True
-
-        return resnet18(nclasses = SequentialCIFAR100.N_CLASSES, cpt=cpt, bias=bias)
+        bias=False
+        return resnet18(nclasses = IncrementalCIFAR100.N_CLASSES, cpt=-1, bias=bias)
 
     @staticmethod
     def get_loss():
@@ -135,12 +130,12 @@ class SequentialCIFAR100(ContinualDataset):
 
     @staticmethod
     def get_normalization_transform():
-        transform = transforms.Normalize(SequentialCIFAR100.MEAN, SequentialCIFAR100.STD)
+        transform = transforms.Normalize(IncrementalCIFAR100.MEAN, IncrementalCIFAR100.STD)
         return transform
 
     @staticmethod
     def get_denormalization_transform():
-        transform = DeNormalize(SequentialCIFAR100.MEAN, SequentialCIFAR100.STD)
+        transform = DeNormalize(IncrementalCIFAR100.MEAN, IncrementalCIFAR100.STD)
         return transform
 
     @staticmethod

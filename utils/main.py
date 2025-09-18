@@ -107,7 +107,9 @@ def parse_args():
 
     tmp_dset_class = get_dataset_class(args)
     n_epochs = tmp_dset_class.get_epochs()
-    if args.n_epochs is None:
+    if args.model == 'er-balanced' and args.n_epochs is None:
+        args.n_epochs = n_epochs * 2 #compensate for the fact that er balanced has a bigger batch size for the first task
+    elif args.n_epochs is None:
         args.n_epochs = n_epochs
     else:
         if args.n_epochs != n_epochs:
@@ -159,8 +161,6 @@ def main(args=None):
     args.conf_host = socket.gethostname()
     dataset = get_dataset(args)
 
-    if args.n_epochs is None and isinstance(dataset, ContinualDataset):
-        args.n_epochs = dataset.get_epochs()
     if args.batch_size is None:
         args.batch_size = dataset.get_batch_size()
         if hasattr(importlib.import_module('models.' + args.model), 'Buffer') and (not hasattr(args, 'minibatch_size') or args.minibatch_size is None):

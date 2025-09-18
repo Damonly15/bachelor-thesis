@@ -19,7 +19,7 @@ from utils import random_id
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.status import ProgressBar
-from utils.feature_forgetting import feature_forgetting, buffer_forgetting
+from utils.feature_forgetting import feature_forgetting, clustering, buffer_forgetting
 from utils.loggers_NC import LoggerNC
 from utils import create_if_not_exists
 
@@ -97,7 +97,7 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
                     if 'class-il' in model.COMPATIBILITY or 'general-continual' in model.COMPATIBILITY else 0)
 
     model.net.train(status)
-    return accs, accs
+    return accs
 
 
 def initialize_wandb(args: Namespace) -> None:
@@ -132,7 +132,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         initialize_wandb(args)
 
     model.net.to(model.device)
-    results, results_mask_classes = [], []
+    results = []
 
     dataset_copy = get_dataset(args)
     all_train_loaders = []
@@ -149,10 +149,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     if (args.log_feature_forgetting):
         feature_forgetting_loggers = []
         feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))
-        feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))   
-
-    if (model.NAME == "er" and args.buffer_size >= dataset.N_CLASSES):
-        buffer_forgetting_logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
+        if dataset.SETTING != 'domain-il':
+            feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))   
+        if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
+            clustering_forgetting_logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
 
     if args.log_NC_metrics:
         logger_NC = LoggerNC(model)
@@ -161,20 +161,12 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         model, past_res = mammoth_load_checkpoint(args, model)
 
         if not args.disable_log and past_res is not None:
-            (results, results_mask_classes, csvdump) = past_res
+            (results, csvdump) = past_res
             logger.load(csvdump)
 
         print('Checkpoint Loaded!')
 
     progress_bar = ProgressBar(joint=args.joint, verbose=not args.non_verbose)
-
-    if args.enable_other_metrics:
-        dataset_copy = get_dataset(args)
-        for t in range(dataset.N_TASKS):
-            model.net.train()
-            _, _ = dataset_copy.get_data_loaders()
-        if model.NAME != 'icarl' and model.NAME != 'pnn':
-            random_results_class, random_results_task = evaluate(model, dataset_copy)
 
     print(file=sys.stderr)
     end_task = dataset.N_TASKS if args.stop_after is None else args.stop_after
@@ -187,11 +179,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         model.meta_begin_task(dataset)
 
         if (not args.inference_only) and (not (args.joint and t != end_task-1)) and (t >= args.start_from): #if joint training last task contains all samples
-            if t and args.enable_other_metrics:
-                accs = evaluate(model, dataset, last=True)
-                results[t - 1] = results[t - 1] + accs[0]
-                if dataset.SETTING == 'class-il':
-                    results_mask_classes[t - 1] = results_mask_classes[t - 1] + accs[1]
 
             scheduler = dataset.get_scheduler(model, args) if not hasattr(model, 'scheduler') else model.scheduler
             for epoch in range(model.args.n_epochs):
@@ -220,6 +207,8 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                         not_aug_inputs = not_aug_inputs.to(model.device)
                         loss = model.meta_observe(inputs, labels, not_aug_inputs, epoch=epoch)
                     assert not math.isnan(loss)
+                    if loss==-1:
+                        break
                     progress_bar.prog(i, data_len, epoch, t, loss)
                     i += 1
 
@@ -237,29 +226,28 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         model.meta_end_task(dataset)
 
         accs = evaluate(model, dataset)
-        results.append(accs[0])
-        results_mask_classes.append(accs[1])
+        results.append(accs)
 
         log_accs(args, logger, accs, t, dataset.SETTING)
 
-        if(args.log_feature_forgetting):
-            full_accuracies = feature_forgetting(model, dataset, 'class-il')
-            log_accs(args, feature_forgetting_loggers[0], (full_accuracies, full_accuracies), t, dataset.SETTING)
-            full_accuracies = feature_forgetting(model, dataset, 'task-il')
-            log_accs(args, feature_forgetting_loggers[1], (full_accuracies, full_accuracies), t, dataset.SETTING)   
-        
-        if (model.NAME == "er" and args.buffer_size >= dataset.N_CLASSES):
-            full_accuracies = buffer_forgetting(model, dataset, args.training_setting)
-            log_accs(args, buffer_forgetting_logger, (full_accuracies, full_accuracies), t, dataset.SETTING)   
-
         if args.log_NC_metrics:  
             logger_NC.log(dataset, model)
+
+        if(args.log_feature_forgetting):
+            full_accuracies = feature_forgetting(model, dataset, 'class-il')
+            log_accs(args, feature_forgetting_loggers[0], full_accuracies, t, dataset.SETTING)
+            if dataset.SETTING != 'domain-il':
+                full_accuracies = feature_forgetting(model, dataset, 'task-il')
+                log_accs(args, feature_forgetting_loggers[1], full_accuracies, t, dataset.SETTING)   
+            if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
+                full_accuracies = clustering(model, dataset, args.training_setting)
+                log_accs(args, clustering_forgetting_logger, full_accuracies, t, dataset.SETTING)    
 
         if args.savecheck:
             save_obj = {
                 'model': model.state_dict(),
                 'args': args,
-                'results': [results, results_mask_classes, logger.dump()],
+                'results': [results, logger.dump()],
                 'optimizer': model.opt.state_dict() if hasattr(model, 'opt') else None,
                 'scheduler': scheduler.state_dict() if scheduler is not None else None,
             }
@@ -289,11 +277,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         log_accs(args, logger, accs, t, final_dataset.SETTING, prefix="FINAL")
 
     if not args.disable_log and args.enable_other_metrics:
-        logger.add_bwt(results, results_mask_classes)
-        logger.add_forgetting(results, results_mask_classes)
-        if model.NAME != 'icarl' and model.NAME != 'pnn':
-            logger.add_fwt(results, random_results_class,
-                           results_mask_classes, random_results_task)
+        logger.add_forgetting(results)
 
     if not args.disable_log:
         logger.write(vars(args), 'output')
@@ -304,10 +288,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
     if args.log_feature_forgetting:
         feature_forgetting_loggers[0].write(vars(args), 'features_cil')
-        feature_forgetting_loggers[1].write(vars(args), 'features_til')
-
-    if (model.NAME == "er" and args.buffer_size >= dataset.N_CLASSES):
-        buffer_forgetting_logger.write(vars(args), 'buffer')
+        if dataset.SETTING != 'domain-il':
+            feature_forgetting_loggers[1].write(vars(args), 'features_til')
+        if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
+            clustering_forgetting_logger.write(vars(args), 'buffer')
 
     if args.log_NC_metrics:
         logger_NC.write(model)

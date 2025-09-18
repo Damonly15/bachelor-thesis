@@ -14,7 +14,7 @@ Example usage:
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from torch.optim import Adam
+import math
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
@@ -44,14 +44,16 @@ class ErBalanced(ContinualModel):
         """
         super(ErBalanced, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
-        self.buffer_nobuffer = Buffer(self.dataset.N_SAMPLES - self.args.buffer_size)
 
-        remainder = self.args.buffer_size % (self.dataset.N_CLASSES)
-        ones_indices = torch.randperm(self.dataset.N_CLASSES)[:remainder]
-        self.remainder = torch.zeros(self.dataset.N_CLASSES)
+        remainder = self.args.buffer_size % (self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)
+        ones_indices = torch.randperm(self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)[:remainder]
+        self.remainder = torch.zeros(self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)
         self.remainder[ones_indices] = 1 
 
         self.overall_batch_size = self.args.batch_size + self.args.minibatch_size
+        self.args.batch_size = math.ceil(self.overall_batch_size)
+        self.args.minibatch_size = 0
+
         self.first_task_iterations = 0
         self.current_task_iterations = 0 
 
@@ -59,12 +61,9 @@ class ErBalanced(ContinualModel):
         """
         ER trains on the current task using the data provided, but also augments the batch with data from the buffer.
         """
-        if inputs.shape[0] != self.dataset.get_batch_size():
-            return 0.0
-        
         if self.current_task > 0:
             if self.first_task_iterations < self.current_task_iterations:
-                return 0
+                return -1
             self.current_task_iterations += 1
         else:
             self.first_task_iterations += 1
@@ -94,35 +93,28 @@ class ErBalanced(ContinualModel):
         return loss.item()
 
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
-        examples_per_class = self.args.buffer_size // dataset.N_CLASSES
-
-        ce = torch.tensor([examples_per_class] * self.cpt) + self.remainder[self.n_past_classes:self.n_seen_classes]
+        examples_per_class = self.args.buffer_size // (dataset.N_CLASSES_PER_TASK * dataset.N_TASKS)  
+        ce = torch.tensor([examples_per_class] * self.cpt) + self.remainder[self.current_task*self.cpt:(self.current_task+1)*self.cpt]
 
         for data in dataset.train_loader:
             inputs, labels, not_aug_inputs = data
 
             flags = torch.zeros(len(inputs)).bool()
-            flags_nobuffer = torch.zeros(len(inputs)).bool()
             
             for j in range(len(flags)):
                 if ce[labels[j] % self.cpt] > 0:
                     flags[j] = True
                     ce[labels[j] % self.cpt] -= 1
-                else:
-                    flags_nobuffer[j] = True
 
             if not torch.all(~flags):
                 self.buffer.add_data(examples=not_aug_inputs[flags],
                                     labels=labels[flags],
                                     task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
-                
-            if not torch.all(~flags_nobuffer):
-                self.buffer_nobuffer.add_data(examples=not_aug_inputs[flags_nobuffer],
-                                    labels=labels[flags_nobuffer],
-                                    task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags_nobuffer])
+            else:
+                break
 
         self.current_task_iterations = 0
-        self.args.batch_size = self.overall_batch_size // (self.current_task+2)
+        self.args.batch_size = math.ceil(self.overall_batch_size / (self.current_task+2))
         self.args.minibatch_size = self.overall_batch_size - self.args.batch_size
 
         return

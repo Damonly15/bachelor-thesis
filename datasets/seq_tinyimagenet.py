@@ -15,7 +15,6 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 from backbone.ResNet18 import resnet18
-from backbone.ResNet18LayerNorm import resnet18layernorm
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_masked_loaders)
@@ -131,7 +130,7 @@ class SequentialTinyImagenet(ContinualDataset):
     SETTING = 'class-il'
     N_CLASSES_PER_TASK = 20
     N_TASKS = 10
-    N_CLASSES = N_CLASSES_PER_TASK * N_TASKS
+    N_CLASSES = 200
     N_SAMPLES = 100000
     MEAN, STD = (0.4802, 0.4480, 0.3975), (0.2770, 0.2691, 0.2821)
     SIZE = (64, 64)
@@ -157,31 +156,18 @@ class SequentialTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_backbone(args, model_compatibility):
-        num_classes = SequentialTinyImagenet.N_CLASSES_PER_TASK * SequentialTinyImagenet.N_TASKS
         if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
             cpt = SequentialTinyImagenet.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1
 
         bias=True
-        if args.model == 'er_wa':
-            bias=False
-
-        if args.backbone == "ResNet18_LN":
-            return resnet18layernorm(nclasses = num_classes, cpt=cpt, bias=bias)
-        else: 
-            return resnet18(nclasses = num_classes, cpt=cpt, bias=bias)
+        return resnet18(nclasses = SequentialTinyImagenet.N_CLASSES, cpt=cpt, bias=bias)
 
 
     @staticmethod
     def get_loss():
         return F.cross_entropy
-        #def loss_fn(input, target):
-        #    num_classes = input.size(1)
-        #    target_one_hot = F.one_hot(target, num_classes=num_classes).type_as(input)
-        #    input_probs = F.softmax(input, dim=1)  # Convert logits to probabilities
-        #    return F.mse_loss(input_probs, target_one_hot)
-        #return loss_fn
 
     def get_transform(self):
         transform = transforms.Compose(

@@ -232,19 +232,23 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
         train_dataset.data, test_dataset.data = train_dataset.data[train_idxs], train_dataset.data[val_idxs]
         train_dataset.targets, test_dataset.targets = train_dataset.targets[train_idxs], train_dataset.targets[val_idxs]
 
-    if setting.SETTING == 'class-il' or setting.SETTING == 'task-il':
-        train_mask = np.logical_and(np.array(train_dataset.targets) >= setting.i,
-                                    np.array(train_dataset.targets) < setting.i + setting.N_CLASSES_PER_TASK)
-        test_mask = np.logical_and(np.array(test_dataset.targets) >= setting.i,
-                                   np.array(test_dataset.targets) < setting.i + setting.N_CLASSES_PER_TASK)
+    #if setting.SETTING == 'class-il' or setting.SETTING == 'task-il':
+    train_mask = np.logical_and(np.array(train_dataset.targets) >= setting.i,
+                                np.array(train_dataset.targets) < setting.i + setting.N_CLASSES_PER_TASK)
+    test_mask = np.logical_and(np.array(test_dataset.targets) >= setting.i,
+                                np.array(test_dataset.targets) < setting.i + setting.N_CLASSES_PER_TASK)
 
-        if not setting.args.joint:
-            train_dataset.data = train_dataset.data[train_mask]
-        test_dataset.data = test_dataset.data[test_mask]
+    if not setting.args.joint:
+        train_dataset.data = train_dataset.data[train_mask]
+    test_dataset.data = test_dataset.data[test_mask]
 
-        if not setting.args.joint:
-            train_dataset.targets = train_dataset.targets[train_mask]
-        test_dataset.targets = test_dataset.targets[test_mask]
+    if not setting.args.joint:
+        train_dataset.targets = train_dataset.targets[train_mask]
+    test_dataset.targets = test_dataset.targets[test_mask]
+
+    if setting.SETTING == 'domain-il':
+        train_dataset.targets = train_dataset.targets - setting.i
+        test_dataset.targets = test_dataset.targets - setting.i
 
     train_dataset, test_dataset = _prepare_data_loaders(train_dataset, test_dataset, setting)
 
@@ -255,7 +259,7 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
     setting.test_loaders.append(test_loader)
     setting.train_loader = train_loader
     
-    if setting.SETTING == 'task-il' or setting.SETTING == 'class-il':
-        setting.i += setting.N_CLASSES_PER_TASK
-        setting.c_task += 1
+    #if setting.SETTING == 'task-il' or setting.SETTING == 'class-il':
+    setting.i += setting.N_CLASSES_PER_TASK
+    setting.c_task += 1
     return train_loader, test_loader

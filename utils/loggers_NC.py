@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import avg_pool2d
 
@@ -10,16 +11,14 @@ from utils import create_if_not_exists
 
 @torch.no_grad
 def calculate_variance(features, mean=None):
-    bias_correction = 0
     if features.shape[0] <= 1:
         return torch.tensor(0.0)
 
     if mean is None:
         mean = torch.mean(features, dim=0)
-        bias_correction = -1 #if the mean is not provided, then we need bias correction
         
     norms = torch.norm(features - mean, dim=1, p=2) ** 2
-    variance = norms.sum() / (norms.shape[0] + bias_correction)
+    variance = norms.sum() / (norms.shape[0])
     return variance
 
 class LoggerVersion:
@@ -27,176 +26,145 @@ class LoggerVersion:
         self.within_var = []
         self.between_var = []
         self.global_var = []
-        self.dist_OCS = []
+        self.snr = []
 
+        self.entropy = []
+        
         self.version = version
 
     @torch.no_grad
-    def log(self, dataset :ContinualDataset, model: ContinualModel, global_mean):
+    def log(self, dataset :ContinualDataset, model: ContinualModel):
         within_var = []
         between_var = []
         global_var = []
+        snr = []
             
-        if model.current_task <= 0 and self.version in ['buffer', 'nobuffer']:
-            max_class = 0
-        elif self.version in ['buffer', 'nobuffer']:
+        if self.version == 'buffer':
+            max_task = model.current_task
             max_class = model.n_past_classes
         else:
-            max_class = dataset.N_CLASSES 
+            max_task = dataset.N_TASKS
+            max_class = model.n_seen_classes
 
         all_features, all_labels, all_tasklabels = model.features[self.version]
 
-        current_within_var = []
-        class_means = []
+        all_class_means = []
+        for task in range(max_task):
+            if dataset.SETTING != 'domain-il':
+                start_label = task*model.cpt
+                end_label = (task+1)*model.cpt
+            else:
+                start_label = 0
+                end_label = dataset.N_CLASSES
 
-        for lab in range(max_class):
-            idx = lab == all_labels #evaluate metrics for every class
-            current_features = all_features[idx]
-
-            mean_feature = torch.mean(current_features, dim=0)
-            class_means.append(mean_feature.unsqueeze(0))
-
-            current_within_var.append(calculate_variance(current_features).item())
-
-            if((lab%model.cpt)==(model.cpt-1)): #if it is last class of a task
-                within_var.append(sum(current_within_var) / len(current_within_var))
-                current_within_var = []
-        
-        if self.version == 'nobuffer':
-            all_features2, all_labels2, all_tasklabels2 = model.features['train_dataset']
-
-            for lab in range(max_class, dataset.N_CLASSES):
-                idx = lab == all_labels2 #evaluate metrics for every class
-                current_features = all_features2[idx]
+            current_within_var = []
+            current_class_means = []
+            for lab in range(start_label, end_label):
+                idx = (lab == all_labels) & (task == all_tasklabels) #evaluate metrics for every class
+                current_features = all_features[idx]
 
                 mean_feature = torch.mean(current_features, dim=0)
-                class_means.append(mean_feature.unsqueeze(0))
+                current_class_means.append(mean_feature)
+                all_class_means.append(mean_feature.unsqueeze(0))
 
                 current_within_var.append(calculate_variance(current_features).item())
 
-                if((lab%model.cpt)==(model.cpt-1)): #if it is last class of a task
-                    within_var.append(sum(current_within_var) / len(current_within_var))
-                    current_within_var = []
+            current_snr = []
+            for class1 in range(0, end_label-start_label):
+                for class2 in range(0, class1):
+                    current_snr.append((torch.norm(current_class_means[class1]-current_class_means[class2], dim=0, p=2)**2
+                                       / (current_within_var[class1] + current_within_var[class2])).item())
+                    
+            within_var.append(sum(current_within_var) / len(current_within_var))
+            snr.append(sum(current_snr) / len(current_snr))
 
-        if len(class_means) > 0:
-            class_means = torch.cat(class_means, dim=0)
+        if len(all_class_means) > 0:
+            all_class_means = torch.cat(all_class_means, dim=0)
         else:
-            class_means = torch.empty((0,))
-        for lab in range(0, class_means.shape[0], model.cpt):
-            if lab<max_class:
-                task_idx = lab//model.cpt == all_tasklabels
-                taskwise_features = all_features[task_idx]
-            else:
-                task_idx = lab//model.cpt == all_tasklabels2
-                taskwise_features = all_features2[task_idx]
+            all_class_means = torch.empty(0, model.net.feature_dim)
 
-            global_var.append(calculate_variance(taskwise_features, global_mean).item())
+        for task in range(max_task):
+            task_idx = task == all_tasklabels
+            taskwise_features = all_features[task_idx]
 
-            current_classes = class_means[lab: lab+model.cpt]
-            between_var.append(calculate_variance(current_classes, global_mean).item())
+            global_var.append(calculate_variance(taskwise_features).item())
 
+            current_classes = all_class_means[task*model.cpt: (task+1)*model.cpt]
+            between_var.append(calculate_variance(current_classes).item())
+            
         self.within_var.append(within_var)
         self.between_var.append(between_var)
         self.global_var.append(global_var)
+        self.snr.append(snr)
 
-        return class_means[:model.n_seen_classes]
-    
-    def log_classifier(self, dataset :ContinualDataset, model: ContinualModel, mean_prediction):
-        dist_OCS = []
-        max_logit = model.n_seen_classes
-
-        if model.current_task <= 0 and ['buffer', 'nobuffer']:
-            max_task = 0
-        elif self.version in ['buffer', 'nobuffer']:
-            max_task = model.current_task
-            if self.version == 'nobuffer' and model.args.buffer_size == dataset.N_SAMPLES: #we have no hold ou samples then
-                all_logits, all_labels, all_tasklabels = get_features(model, dataset, 'train_dataset', model.current_task, "logits") 
-            else:
-                all_logits, all_labels, all_tasklabels = get_features(model, dataset, self.version, model.current_task, "logits") 
+        class_means = []
+        for lab in range(max_class):
+            mean_feature = torch.mean(all_features[all_labels == lab], dim=0)
+            class_means.append(mean_feature.unsqueeze(0))
+        
+        if len(class_means) > 0:
+            class_means = torch.cat(class_means, dim=0)
         else:
-            all_logits, all_labels, all_tasklabels = get_features(model, dataset, self.version, dataset.N_TASKS-1, "logits") 
-            max_task = all_tasklabels.max().item() + 1
+            class_means = torch.empty(0, model.net.feature_dim)
+
+        return all_class_means, class_means
+    
+    def log_classifier(self, dataset :ContinualDataset, model: ContinualModel):
+        entropy = []
+
+        max_logit = model.n_seen_classes
+        if self.version == 'buffer':
+            max_task = model.current_task
+        else: 
+            max_task = dataset.N_TASKS
+
+        all_logits, all_labels, all_tasklabels = get_features(model, dataset, self.version, dataset.N_TASKS-1, "logits")
 
         for task in range(max_task):
             task_idx = all_tasklabels == task
             prob = F.softmax(all_logits[task_idx, :max_logit], dim=1)
-
             log_prob = F.log_softmax(all_logits[task_idx, :max_logit], dim=1)
 
-            if model.args.training_setting == 'class-il':
-                log_mean_prediction = F.log_softmax(mean_prediction[:max_logit], dim=0)
-            else:
-                log_mean_prediction = F.log_softmax(mean_prediction[task*model.cpt : task*model.cpt + model.cpt], dim=0)
-            log_mean_prediction = log_mean_prediction.unsqueeze(0).expand_as(log_prob)
+            entropy.append((-torch.sum(prob * log_prob, dim=1)).mean().item())
 
-            kl_div = torch.sum(prob * (log_prob - log_mean_prediction), dim=1)  # per sample
-            dist_OCS.append(kl_div.mean().item())
-
-        if self.version == 'nobuffer':
-            all_logits2, all_labels2, all_tasklabels2 = get_features(model, dataset, 'train_dataset', dataset.N_TASKS-1, "logits")
-
-            for task in range(max_task, all_tasklabels2.max().item() + 1):
-                task_idx = all_tasklabels2 == task
-                prob = F.softmax(all_logits2[task_idx, :max_logit], dim=1)
-
-                log_prob = F.log_softmax(all_logits2[task_idx, :max_logit], dim=1)
-
-                if model.args.training_setting == 'class-il':
-                    log_mean_prediction = F.log_softmax(mean_prediction[:max_logit], dim=0)
-                else:
-                    log_mean_prediction = F.log_softmax(mean_prediction[task*model.cpt : task*model.cpt + model.cpt], dim=0)
-                log_mean_prediction = log_mean_prediction.unsqueeze(0).expand_as(log_prob)
-
-                kl_div = torch.sum(prob * (log_prob - log_mean_prediction), dim=1)  # per sample
-                dist_OCS.append(kl_div.mean().item())
-
-        self.dist_OCS.append(dist_OCS)
+        self.entropy.append(entropy)
         return
         
 class LoggerNC:
     def __init__(self, model: ContinualModel) -> None:
-        if hasattr(model, 'buffer') and model.args.buffer_size >= model.N_CLASSES:
+        if hasattr(model, 'buffer') and model.args.buffer_size >= model.dataset.N_CLASSES_PER_TASK * model.dataset.N_TASKS:
             self.versions = ['buffer']
         else:
             self.versions = []
 
-        self.versions = self.versions + ['nobuffer', 'test_dataset']     
+        self.versions = self.versions + ['train_dataset', 'test_dataset']     
 
         self.all_loggers = {
             i: LoggerVersion(i) for i in self.versions
         }
 
-        self.model_weights = []
-        self.global_mean_feature_norm = []
-        self.mean_prediction = []
+        self.mean_shift = []
 
-        self.gradient_sv = []
-        self.features_sv = []
-        
-        self.past = {
-            'b' : [],
-            'cov' : [],
-            'pred' : []
-        }
+        self.NC2_diagonal = []
+        self.NC2_off_diagonal = []
+        self.NC2_between_tasks = []
+        self.NC3 = []
 
-        self.current = {
-            'b' : [],
-            'cov' : [],
-            'pred' : []
-        }
-
-        self.future = {
-            'b' : [],
-            'cov' : [],
-            'pred' : []
-        }
-
+        self.norm = []
+        self.norm_complement = []
     
     @torch.no_grad
     def log(self, dataset: ContinualDataset, model: ContinualModel):
-        status = model.net.training
-        model.net.eval()
+        mean_shift = []
 
+        NC2_diagonal = []
+        NC2_off_diagonal = []
+        NC3 = []
+
+        norm = []
+        norm_complement = []
+
+        """
         all_features, all_labels, all_tasklabels = model.features['train_dataset']
 
         global_mean = torch.mean(all_features, dim=0)
@@ -209,71 +177,111 @@ class LoggerNC:
             for task in range(1, dataset.N_TASKS):
                 current_mean_prediction = model.net.classifier[task](global_mean_gpu).squeeze(0).cpu()
                 mean_prediction = torch.cat((mean_prediction, current_mean_prediction), dim=0)
+        """
+        if isinstance(model.net.classifier, nn.Linear):
+            classifier_weights = (model.net.classifier.weight.detach().cpu()[:model.n_seen_classes]).T
+        else: 
+            weights = [layer.weight.detach().cpu() for layer in model.net.classifier]
+            classifier_weights = (torch.cat(weights, dim=0)[:model.n_seen_classes]).T
 
-        if model.NAME == "er_extra":
-            model.gradient_sv = torch.stack(model.gradient_sv)
-            self.gradient_sv.append(torch.mean(model.gradient_sv, dim=0))
-            model.gradient_sv = []
+        all_train_means, train_means = self.all_loggers['train_dataset'].log(dataset, model)
+        self.all_loggers['train_dataset'].log_classifier(dataset, model)
+
+        all_test_means, tests_means = self.all_loggers['test_dataset'].log(dataset, model)
+        self.all_loggers['test_dataset'].log_classifier(dataset, model)
+
+        if model.args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS:
+            all_buffer_means, buffer_means = self.all_loggers['buffer'].log(dataset, model)
+            self.all_loggers['buffer'].log_classifier(dataset, model)
+
+            delta_mean = torch.norm(all_buffer_means - all_train_means[:model.cpt * model.current_task], dim=1, p=2)
+
+            for task in range(model.current_task):
+                mean_shift.append(torch.mean(delta_mean[task*model.cpt:(task+1)*model.cpt]).item())
+            
+            U = torch.cat((buffer_means, train_means[-model.cpt:]), dim=0)
+        else:
+            for task in range(model.current_task):
+                mean_shift.append(0)
+
+            U = train_means[-model.cpt:]
+            classifier_weights = (classifier_weights[:, -model.cpt:])
+
+        if model.dataset.SETTING == 'domain-il':
+            train_features, train_labels, train_tasklabels = model.features['train_dataset']
+            train_features = train_features[train_tasklabels == model.current_task]
+            train_labels = train_labels[train_tasklabels == model.current_task]
+
+            buffer_features, buffer_labels, buffer_tasklabels = model.features['buffer']
+            buffer_features = buffer_features[buffer_tasklabels < model.current_task]
+            buffer_labels = buffer_labels[buffer_tasklabels < model.current_task]
+
+            all_features = torch.cat((train_features, buffer_features), dim=0)
+            all_labels = torch.cat((train_labels, buffer_labels), dim=0)
+
+            U = []
+            for lab in range(model.cpt):
+                mean_feature = torch.mean(all_features[all_labels == lab], dim=0)
+                U.append(mean_feature.unsqueeze(0))
+            U = torch.cat(U, dim=0)
+               
+        U_tilde = (U - torch.mean(U, dim=0)).T
+        U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
+        UT_U = U_tilde_normalized.T @ U_tilde_normalized
+        #print(UT_U)
+
+        keep_mask = torch.tril(torch.ones_like(UT_U, dtype=torch.bool), diagonal=-1)
+
+        for lab in range(0, model.n_seen_classes, model.cpt):
+            block = UT_U[lab:lab+model.cpt, lab:lab+model.cpt]
+
+            NC2_diagonal.append(torch.diag(block).mean().item())
+
+            tril_vals = torch.tril(block, diagonal=-1)
+            NC2_off_diagonal.append(tril_vals.mean().item())
+
+            keep_mask[lab:lab+model.cpt, lab:lab+model.cpt] = False
+
+        self.NC2_between_tasks.append(UT_U[keep_mask].mean().item())
+
+        classifier_weights = classifier_weights / classifier_weights.norm(dim=0, keepdim=True, p=2)
+        classifier_weights = classifier_weights.T @ U_tilde_normalized
+
+        for lab in range(0, model.n_seen_classes, model.cpt):
+            NC3.append(torch.diag(classifier_weights)[lab: lab+model.cpt].mean().item())
         
-            task_mask = all_tasklabels == model.current_task
-            U, singular_values, Vh = torch.linalg.svd(all_features[task_mask], full_matrices=False)
-            self.features_sv.append(singular_values)
-        
-            self.mean_prediction.append(mean_prediction)
+        train_features, train_labels, train_tasklabels = model.features['train_dataset']
+        model.projection = U_tilde @ torch.inverse(U_tilde.T @ U_tilde) @ U_tilde.T
+        projection = model.projection
+        complement_projection = torch.eye(projection.shape[0]) - projection
 
-        nobuffer_means = self.all_loggers['nobuffer'].log(dataset, model, global_mean)
-        self.all_loggers['nobuffer'].log_classifier(dataset, model, global_mean)
+        for lab in range(dataset.N_TASKS):
+            idx = train_tasklabels == lab
+            current_features = train_features[idx]
 
-        test_means = self.all_loggers['test_dataset'].log(dataset, model, global_mean)
-        self.all_loggers['test_dataset'].log_classifier(dataset, model, global_mean)
+            projected_features = (projection @ current_features.T).T
+            norm.append(torch.norm(projected_features, dim=0, p=2).mean().item() / (U_tilde.shape[1]-1))
+            print((U_tilde.shape[1]-1))
 
-        if model.args.buffer_size >= model.N_CLASSES:
-            buffer_means = self.all_loggers['buffer'].log(dataset, model, global_mean)
-            self.all_loggers['buffer'].log_classifier(dataset, model, global_mean)
+            complement_features = (complement_projection @ current_features.T).T
+            norm_complement.append(torch.norm(complement_features, dim=0, p=2).mean().item() / (U_tilde.shape[0]-(U_tilde.shape[1]-1)))
+            print((U_tilde.shape[0]-(U_tilde.shape[1]-1)))
+              
+        self.mean_shift.append(mean_shift)
 
-        if model.current_task > 0 and model.current_task+1 < dataset.N_TASKS:
-            if model.args.buffer_size >= model.N_CLASSES:
-                U_tilde = (torch.cat([buffer_means, nobuffer_means[model.n_past_classes: model.n_seen_classes]], dim=0)).T# - global_mean).T
-            else:
-                U_tilde = (nobuffer_means[model.n_past_classes: model.n_seen_classes]).T# - global_mean).T
-            projection = torch.inverse(U_tilde.T @ U_tilde) @ U_tilde.T
+        self.NC2_diagonal.append(NC2_diagonal)
+        self.NC2_off_diagonal.append(NC2_off_diagonal)
+        self.NC3.append(NC3)
 
-            for current_class, my_dictionary in [(0, self.past), (model.n_past_classes, self.current), (dataset.N_CLASSES-model.cpt, self.future)]:
-                if current_class == 0:
-                    all_features, all_labels, _ = model.features['nobuffer']
-                else:
-                    all_features, all_labels, _ = model.features['train_dataset']
-
-                idx = all_labels == current_class
-                current_features = all_features[idx]
-                b = projection @ current_features.T
-
-                my_dictionary['b'].append(torch.mean(b, dim=1))
-                print(my_dictionary['b'])
-
-                b_centered = b - b.mean(dim=1, keepdim=True) 
-                my_dictionary['cov'] = (b_centered @ b_centered.T) / (b.shape[1] - 1) 
-                print(my_dictionary['cov'])
-
-                current_feature = torch.mean(current_features, dim=0).to(model.device)
-                my_dictionary['mean_prediction'] = model.net.final_layer(current_feature, torch.ones(current_feature.shape[0], dtype=torch.int64, device=model.device) * current_class)[:model.n_seen_classes]
-                print(my_dictionary['mean_prediction'])
-
-        model_weights = 0.0
-        for param in model.net.parameters():
-            if param.requires_grad:  # Only count trainable parameters
-                model_weights += torch.norm(param, p=2) ** 2
-        self.model_weights.append(model_weights.sqrt().item()) 
-        
-        self.global_mean_feature_norm.append(torch.norm(global_mean, p=2, dim=0).item())
-        
-        model.net.train(status)
+        self.norm.append(norm)
+        self.norm_complement.append(norm_complement)
+        return
 
     def write(self, model: ContinualModel): 
         for key, value in self.all_loggers.items():
 
             wrargs = (vars(model.args)).copy()
-            wrargs['result_type'] = key if key != 'nobuffer' else 'train_dataset'
+            wrargs['result_type'] = key
 
             if 'class_order' in wrargs:
                 del wrargs['class_order'] #don't need how we permuted the classes in the log file. This can get very long if we have many classes.
@@ -292,16 +300,41 @@ class LoggerNC:
                 for j, var in enumerate(fa):
                     wrargs['global_var_' + str(j + 1) + '_task' + str(i+1)] = var
 
-            for i, fa in enumerate(value.dist_OCS):
+            for i, fa in enumerate(value.snr):
                 for j, var in enumerate(fa):
-                    wrargs['dist_OCS_' + str(j + 1) + '_task' + str(i+1)] = var
-            
-            if key == 'nobuffer':
-                for i, fa in enumerate(self.global_mean_feature_norm):
-                    wrargs['feature_norm_task' + str(i+1)] = fa
+                    wrargs['snr_' + str(j + 1) + '_task' + str(i+1)] = var
 
-                for i, fa in enumerate(self.model_weights):
-                    wrargs['model_weights_task' + str(i+1)] = fa 
+            for i, fa in enumerate(value.entropy):
+                for j, var in enumerate(fa):
+                    wrargs['entropy_' + str(j + 1) + '_task' + str(i+1)] = var
+            
+            if key == 'train_dataset':
+                for i, fa in enumerate(self.mean_shift):
+                    for j, var in enumerate(fa):
+                        wrargs['mean_shift_' + str(j + 1) + '_task' + str(i+1)] = var
+
+                for i, fa in enumerate(self.NC2_diagonal):
+                    for j, var in enumerate(fa):
+                        wrargs['NC2_diagonal_' + str(j + 1) + '_task' + str(i+1)] = var
+
+                for i, fa in enumerate(self.NC2_off_diagonal):
+                    for j, var in enumerate(fa):
+                        wrargs['NC2_off_diagonal_' + str(j + 1) + '_task' + str(i+1)] = var
+
+                for i, fa in enumerate(self.NC2_between_tasks):
+                    wrargs['NC2_between_tasks_task' + str(i+1)] = fa
+                
+                for i, fa in enumerate(self.NC3):
+                    for j, var in enumerate(fa):
+                        wrargs['NC3_' + str(j + 1) + '_task' + str(i+1)] = var
+
+                for i, fa in enumerate(self.norm):
+                    for j, var in enumerate(fa):
+                        wrargs['norm_' + str(j + 1) + '_task' + str(i+1)] = var
+                    
+                for i, fa in enumerate(self.norm_complement):
+                    for j, var in enumerate(fa):
+                        wrargs['norm_complement_' + str(j + 1) + '_task' + str(i+1)] = var
 
 
             create_if_not_exists(target_folder + model.args.training_setting)
@@ -316,27 +349,3 @@ class LoggerNC:
             print("Logging NC metrics in " + path)
             with open(path, 'a') as f:
                 f.write(str(wrargs) + '\n')
-
-        if model.NAME == "er_extra":
-            current_path = pre_path + "/mean_prediction"
-            create_if_not_exists(current_path)
-            with open(current_path + f'/{wrargs["buffer_size"]}_{wrargs["seed"]}.txt', "w") as f:
-                for tensor in self.mean_prediction:
-                    line = ' '.join([f"{v:.5f}" for v in tensor.tolist()])
-                    f.write(line + "\n")
-
-            current_path = pre_path + "/gradient_sv"
-            create_if_not_exists(current_path)
-            with open(current_path + f'/{wrargs["buffer_size"]}_{wrargs["seed"]}.txt', "w") as f:
-                for tensor in self.gradient_sv:
-                    line = ' '.join([f"{v:.5f}" for v in tensor.tolist()])
-                    f.write(line + "\n")
-            
-            current_path = pre_path + "/features_sv"
-            create_if_not_exists(current_path)
-            with open(current_path + f'/{wrargs["buffer_size"]}_{wrargs["seed"]}.txt', "w") as f:
-                for tensor in self.features_sv:
-                    line = ' '.join([f"{v:.5f}" for v in tensor.tolist()])
-                    f.write(line + "\n")
-
-

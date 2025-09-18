@@ -17,16 +17,13 @@ def buffer_forgetting(model, dataset, version):
     else:
         return feature_forgetting_til(model, dataset, 'buffer')
     
+def clustering(model, dataset, version, num_iters=2000):
+    if version=='class-il':
+        return clustering_cil(model, dataset, num_iters)
+    else:
+        return clustering_til(model, dataset, num_iters)
 
-@torch.no_grad()
 def feature_forgetting_til(model, dataset, version):
-    """
-    Evaluate the feature quality at four different layers with a separate head
-    """
-    
-    model_status = model.net.training
-    model.net.eval()
-
     heads = []    #Separate head for every task
     all_features, all_labels, all_tasklabels = model.features[version]
 
@@ -40,95 +37,188 @@ def feature_forgetting_til(model, dataset, version):
         heads.append(logreg_model)
 
     accuracy = evaluate_til(model, dataset, heads)
-    model.net.train(model_status)
+    
     return accuracy
 
-
-@torch.no_grad()
 def evaluate_til(model, dataset, heads) -> Tuple[list, list]:
-    """
-    Evaluates the accuracy of the model for each past task in TIL paradigm with a fitted head.
-    """
+    test_features, test_labels, test_tasklabels = model.features['test_dataset']
+
     accs = []
-    for k, test_loader in enumerate(dataset.test_loaders):
-        correct, total = 0.0, 0.0
-        test_iter = iter(test_loader)
-        while True:
-            try:
-                data = next(test_iter)
-            except StopIteration:
-                break
-            inputs, labels = data
-            inputs = inputs.to(model.device)
-            
-            #do proper forward pass
-            features = model.net.forward(inputs, returnt="features").detach().cpu()
-            outputs = heads[k].predict_proba(features.numpy())
-            outputs = torch.from_numpy(outputs)
+    for task in range(model.current_task+1):
+        current_features = test_features[test_tasklabels == task]
+        current_labels = test_labels[test_tasklabels == task]
 
-            _, pred = torch.max(outputs, 1)
-            labels = labels - (k*model.cpt)
-            correct += torch.sum(pred == labels).item()
-            total += labels.shape[0]
+        outputs = heads[task].predict_proba(current_features.numpy())
+        outputs = torch.from_numpy(outputs)
+        _, pred = torch.max(outputs, 1)
 
-        accs.append(correct / total * 100)
+        current_labels = current_labels - (task*model.cpt)
+        accs.append((pred == current_labels).float().mean().item() * 100)
     return accs
 
-@torch.no_grad()
 def feature_forgetting_cil(model, dataset, version):
-    """
-    Evaluate the feature quality at four different layers with a common head
-    """
-    
-    model_status = model.net.training
-    model.net.eval()
-
-    current_features, current_labels, _ = model.features[version]
+    all_features, all_labels, all_tasklabels = model.features[version]
+    current_features = all_features[all_tasklabels <= model.current_task]
+    current_labels = all_labels[all_tasklabels <= model.current_task]
 
     logreg_model = LogisticRegression(max_iter=5000, C=10)
     logreg_model.fit(current_features.numpy(), current_labels.numpy())
 
     accuracy = evaluate_cil(model, dataset, logreg_model)
-    model.net.train(model_status)
-    """W = logreg_model.coef_
-    b = logreg_model.intercept_
-    model.net.classifier.weight[:model.n_seen_classes, :] = torch.tensor(W, dtype=torch.float32, device=model.device)
-    model.net.classifier.bias[:model.n_seen_classes] = torch.tensor(b, dtype=torch.float32, device=model.device)"""
     return accuracy
 
-
-@torch.no_grad()
 def evaluate_cil(model, dataset, head) -> Tuple[list, list]:
-    """
-    Evaluates the accuracy of the model for each past task in CIL paradigm with a fitted head.
-    """
+    test_features, test_labels, test_tasklabels = model.features['test_dataset']
+
     accs = []
-    for k, test_loader in enumerate(dataset.test_loaders):
-        correct, total = 0.0, 0.0
-        test_iter = iter(test_loader)
-        while True:
-            try:
-                data = next(test_iter)
-            except StopIteration:
-                break
-            inputs, labels = data
-            inputs = inputs.to(model.device)
-            
-            #do proper forward pass
-            features = (model.net.forward(inputs, returnt="features")).detach().cpu()
-            outputs = head.predict_proba(features.numpy())
-            outputs = torch.from_numpy(outputs)
+    for task in range(model.current_task+1):
+        current_features = test_features[test_tasklabels == task]
+        current_labels = test_labels[test_tasklabels == task]
 
-            _, pred = torch.max(outputs, 1)
-            correct += torch.sum(pred == labels).item()
-            total += labels.shape[0]
+        outputs = head.predict_proba(current_features.numpy())
+        outputs = torch.from_numpy(outputs)
+        _, pred = torch.max(outputs, 1)
 
-        accs.append(correct / total * 100)
+        accs.append((pred == current_labels).float().mean().item() * 100)     
     return accs
+
+def clustering_cil(model, dataset, num_iters):   
+    buffer_features, buffer_labels, buffer_tasklabels = model.features['buffer']
+    #buffer_features = (model.projection @ buffer_features.T).T
+
+    test_features, test_labels, test_tasklabels = model.features['test_dataset']
+    seen_mask = test_tasklabels <= model.current_task
+    test_features = test_features[seen_mask]
+    test_labels = test_labels[seen_mask]
+    test_tasklabels = test_tasklabels[seen_mask]
+    #test_features = (model.projection @ test_features.T).T
+ 
+    # --- Initialization: cluster means = mean of buffer_features per label ---
+    cluster_means = []
+    for label in range(model.n_seen_classes):
+        cluster_means.append(buffer_features[buffer_labels == label].mean(dim=0))
+    cluster_means = torch.stack(cluster_means) # (K, D)
+
+    for _ in range(num_iters):
+        # --- E-step: assign test_features to nearest cluster ---
+        dists = torch.cdist(test_features, cluster_means) # (M, K)
+        test_assignments = dists.argmin(dim=1) # (M,)
+
+        # --- M-step: update cluster means using test_features ---
+        new_means = []
+        for k in range(model.n_seen_classes):
+            assigned = test_features[test_assignments == k]
+            if len(assigned) > 0:
+                new_means.append(assigned.mean(dim=0))
+            else:
+            # if no test feature assigned, keep old mean
+                new_means.append(cluster_means[k])
+                print("fallback was used")
+        cluster_means = torch.stack(new_means)
+
+    # --- Final label assignment: use buffer_features to map clusters -> labels ---
+    dists_buf = torch.cdist(buffer_features, cluster_means) # (N, K)
+    buffer_assignments = dists_buf.argmin(dim=1) # (N,)
+
+    cluster_to_label = {}
+    for k in range(model.n_seen_classes):
+        labels_k = buffer_labels[buffer_assignments == k]
+        if len(labels_k) > 0:
+        # majority vote
+            majority_label = labels_k.mode().values.item()
+            cluster_to_label[k] = majority_label
+        else:
+            # fallback: map directly from initialization
+            cluster_to_label[k] = k
+            print("fallback was used")
+    
+    print(cluster_to_label)
+
+    acc = []
+    for task in range(model.current_task + 1):
+        dists = torch.cdist(test_features[task == test_tasklabels], cluster_means)  # (M, K)
+        test_assignments = dists.argmin(dim=1)             # (M,)
+
+        # Map cluster indices → predicted labels
+        pred_labels = torch.tensor(
+            [cluster_to_label[int(c.item())] for c in test_assignments])
+
+        # Accuracy
+        acc.append((pred_labels == test_labels[task == test_tasklabels]).float().mean().item() * 100)
+    return acc
+
+def clustering_til(model, dataset, num_iters):
+    buffer_features, buffer_labels, buffer_tasklabels = model.features['buffer']
+
+    test_features, test_labels, test_tasklabels = model.features['test_dataset']
+
+    # --- Initialization: cluster means = mean of buffer_features per label ---
+    acc = []
+    for task in range(model.current_task + 1):
+        current_buffer_features = buffer_features[buffer_tasklabels == task]
+        current_buffer_labels = buffer_labels[buffer_tasklabels == task] - (task*model.cpt)
+
+        current_test_features = test_features[test_tasklabels == task]
+        current_test_labels = test_labels[test_tasklabels == task] - (task*model.cpt)
+
+        cluster_means = []
+        for label in range(model.cpt):
+            cluster_means.append(current_buffer_features[current_buffer_labels == label].mean(dim=0))
+        cluster_means = torch.stack(cluster_means) # (K, D)
+
+        for _ in range(num_iters):
+            # --- E-step: assign test_features to nearest cluster ---
+            dists = torch.cdist(current_test_features, cluster_means) # (M, K)
+            test_assignments = dists.argmin(dim=1) # (M,)
+
+            # --- M-step: update cluster means using test_features ---
+            new_means = []
+            for k in range(model.cpt):
+                assigned = current_test_features[test_assignments == k]
+                if len(assigned) > 0:
+                    new_means.append(assigned.mean(dim=0))
+                else:
+                # if no test feature assigned, keep old mean
+                    new_means.append(cluster_means[k])
+                    print("fallback was used")
+                    
+            cluster_means = torch.stack(new_means)
+
+        # --- Final label assignment: use buffer_features to map clusters -> labels ---
+        dists_buf = torch.cdist(current_buffer_features, cluster_means) # (N, K)
+        buffer_assignments = dists_buf.argmin(dim=1) # (N,)
+
+        cluster_to_label = {}
+        for k in range(model.cpt):
+            labels_k = current_buffer_labels[buffer_assignments == k]
+            if len(labels_k) > 0:
+            # majority vote
+                majority_label = labels_k.mode().values.item()
+                cluster_to_label[k] = majority_label
+            else:
+                # fallback: map directly from initialization
+                cluster_to_label[k] = k
+                print("fallback was used")
+    
+        print(cluster_to_label)
+
+        dists = torch.cdist(current_test_features, cluster_means)  # (M, K)
+        test_assignments = dists.argmin(dim=1)             # (M,)
+
+        # Map cluster indices → predicted labels
+        pred_labels = torch.tensor(
+            [cluster_to_label[int(c.item())] for c in test_assignments])
+
+        # Accuracy
+        acc.append((pred_labels == current_test_labels).float().mean().item() * 100)
+    return acc
+
 
 @torch.no_grad
 def get_features(model, dataset, version, max_task, feat_or_log="features"):
-    #should only be called when network is in eval mode!
+    model_status = model.net.training
+    model.net.eval()
+
     if version == 'buffer':        
         buf_x, all_labels, all_tasklabels = model.buffer.get_all_data(transform=model.transform)
 
@@ -145,22 +235,6 @@ def get_features(model, dataset, version, max_task, feat_or_log="features"):
 
             all_features.append(features)
             
-        all_features = torch.cat(all_features, dim=0)
-    elif version == 'nobuffer':       
-        buf_x, all_labels, all_tasklabels = model.buffer_nobuffer.get_all_data(transform=model.transform)
-
-        all_features = []
-        for i in range(0, buf_x.shape[0], model.args.batch_size):
-            inputs = buf_x[i: i+model.args.batch_size]
-            current_labels = all_tasklabels[i: i+model.args.batch_size]
-            inputs = inputs.to(model.device)
-
-            if feat_or_log=="features":
-                features = model.net.forward(inputs, returnt="features").detach().cpu()
-            elif feat_or_log=="logits":
-                features = model.net.forward(inputs, task_label=current_labels).detach().cpu()
-
-            all_features.append(features)
         all_features = torch.cat(all_features, dim=0)
     elif version == 'train_dataset' or version == 'test_dataset':
         all_features, all_labels, all_tasklabels = [], [], []
@@ -200,6 +274,8 @@ def get_features(model, dataset, version, max_task, feat_or_log="features"):
         all_tasklabels = torch.cat(all_tasklabels, dim=0)        
     else:
         raise Exception("Something went wrong when getting the features")
+    
+    model.net.train(model_status)
     return all_features, all_labels, all_tasklabels    
 
 #old code

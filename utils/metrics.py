@@ -53,6 +53,8 @@ def forgetting(results):
     Returns:
         float: The mean forgetting value.
     """
+    results = results.copy()
+
     n_tasks = len(results)
     li = []
     for i in range(n_tasks - 1):
