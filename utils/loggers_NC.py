@@ -245,6 +245,9 @@ class LoggerNC:
         all_test_means, tests_means = self.all_loggers['test_dataset'].log(dataset, model)
         self.all_loggers['test_dataset'].log_classifier(dataset, model)
 
+        if not ('buffer' in self.all_loggers):
+            return
+
         all_buffer_means, buffer_means = self.all_loggers['buffer'].log(dataset, model)
         self.all_loggers['buffer'].log_classifier(dataset, model)
 
@@ -255,8 +258,7 @@ class LoggerNC:
         else: 
             weights = [layer.weight.detach().cpu() for layer in model.net.classifier]
             classifier_weights = (torch.cat(weights, dim=0)[:model.n_seen_classes]).T
-        classifier_weights = (classifier_weights[:, -buffer_means.shape[0]:])
-
+        
         delta_mean = torch.norm(all_buffer_means - all_train_means[:model.cpt * (model.current_task+1)], dim=1, p=2)
 
         for task in range(model.current_task+1):
@@ -282,7 +284,6 @@ class LoggerNC:
 
         U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
         UT_U_tilde_normalized = U_tilde_normalized.T @ U_tilde_normalized  
-        print(UT_U_tilde_normalized)
 
         block_mask = torch.zeros_like(UT_U_tilde, dtype=torch.bool)
         between_mask = torch.ones_like(UT_U_tilde, dtype=torch.bool)
@@ -359,7 +360,6 @@ class LoggerNC:
 
         U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
         UT_U_tilde_normalized = U_tilde_normalized.T @ U_tilde_normalized 
-        print(UT_U_tilde_normalized)
 
 
         if dataset.SETTING == 'domain-il':
