@@ -131,7 +131,9 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     if not args.nowand:
         initialize_wandb(args)
 
+
     model.net.to(model.device)
+    checkpoint_path = f'/cluster/scratch/dammeier/mammoth_checkpoints'
     results = []
 
     dataset_copy = get_dataset(args)
@@ -158,22 +160,25 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         logger_NC = LoggerNC(model)
 
     if args.loadcheck is not None:
+        args.loadcheck = checkpoint_path + f'/{args.ckpt_name}_{args.start_from}.pt'
         model, past_res = mammoth_load_checkpoint(args, model)
 
-        if not args.disable_log and past_res is not None:
-            (results, csvdump) = past_res
-            logger.load(csvdump)
+        for t in range(start_task):
+            train_loader, test_loader = dataset.get_data_loaders()
+            model.meta_begin_task(dataset)
+            model.meta_end_task(dataset)
 
         print('Checkpoint Loaded!')
 
     progress_bar = ProgressBar(joint=args.joint, verbose=not args.non_verbose)
 
     print(file=sys.stderr)
+    start_task = args.start_from
     end_task = dataset.N_TASKS if args.stop_after is None else args.stop_after
 
     torch.cuda.empty_cache()
 
-    for t in range(0, end_task):
+    for t in range(start_task, end_task):
         model.net.train()
         train_loader, test_loader = dataset.get_data_loaders()
         model.meta_begin_task(dataset)
@@ -241,8 +246,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                 full_accuracies = clustering(model, dataset, args.training_setting)
                 log_accs(args, clustering_forgetting_logger, full_accuracies, t, dataset.SETTING)    
 
-        model.meta_end_task(dataset)
-
         if args.savecheck:
             save_obj = {
                 'model': model.state_dict(),
@@ -253,17 +256,13 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             }
             if 'buffer_size' in model.args:
                 save_obj['buffer'] = deepcopy(model.buffer).to('cpu')
-            if hasattr(model, 'buffer_refitting'):
-                save_obj['buffer_refitting'] = deepcopy(model.buffer_refitting).to('cpu')
-            if hasattr(model, 'buffer_nobuffer'):
-                save_obj['buffer_nobuffer'] = deepcopy(model.buffer_nobuffer).to('cpu')
 
             # Saving model checkpoint
-            checkpoint_name = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{t}.pt'
-            create_if_not_exists(f'/cluster/scratch/dammeier/mammoth_checkpoints')
-            torch.save(save_obj, checkpoint_name)
+            checkpoint_name = checkpoint_path + f'/{args.ckpt_name}_{t}.pt'
+            create_if_not_exists(checkpoint_path)
+            torch.save(save_obj, checkpoint_name)  
 
-        #increase this at the end of a task    
+        model.meta_end_task(dataset)
         
 
     if args.validation:

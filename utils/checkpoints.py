@@ -160,10 +160,6 @@ def mammoth_load_checkpoint(args, model: torch.nn.Module, ignore_classifier=Fals
             if args.model != loading_model:
                 print(f'WARNING: The loaded model was trained with a different model: {loading_model}')
             model.load_buffer(saved_obj['buffer'], 'normal')
-        if 'buffer_refitting' in saved_obj:
-            model.load_buffer(saved_obj['buffer_refitting'], 'refitting')
-        if 'buffer_nobuffer' in saved_obj:
-            model.load_buffer(saved_obj['buffer_nobuffer'], 'nobuffer')
 
         return model, saved_obj['results']
     else:

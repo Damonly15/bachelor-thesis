@@ -49,45 +49,10 @@ from utils.best_args import best_args
 from utils.conf import set_random_seed
 from utils.checkpoints import mammoth_load_checkpoint
 from utils.training import evaluate
-from utils.feature_forgetting import get_features, evaluate_til, evaluate_cil
+from utils.feature_forgetting import get_features
 from utils.NC_metrics import evaluate_NC_metrics
 from sklearn.base import BaseEstimator, ClassifierMixin
 from scipy.spatial.distance import cdist
-
-class NearestMeanTaskAwareClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, mean_features, task_variances=None, classes_per_task=1):
-        """
-        mean_features: (num_classes, feature_dim) numpy array of class mean features
-        task_variances: (num_tasks,) numpy array containing variance for each task, or None
-        classes_per_task: Number of classes per task (integer)
-        """
-        self.mean_features = mean_features
-        self.class_to_task = numpy.arange(len(self.mean_features)) // classes_per_task
-        
-        # Compute the number of tasks based on total classes
-        self.num_tasks = len(mean_features) // classes_per_task
-        self.task_variances = task_variances if task_variances is not None else numpy.ones(self.num_tasks)
-
-    def fit(self, X, y):
-        """Dummy fit method to comply with sklearn API (not needed for fixed means)."""
-        return self
-
-    def predict(self, X):
-        """Compute normalized distances and return the nearest class."""
-        distances = cdist(X, self.mean_features, metric='euclidean')  # Compute distances
-        
-        # Normalize distances by task standard deviation
-        task_std_devs = numpy.sqrt(self.task_variances[self.class_to_task])  # Get std per class
-        normalized_distances = distances / task_std_devs  # Normalize distances
-
-        return numpy.argmin(normalized_distances, axis=1)  # Return class index with min distance
-
-    def predict_proba(self, X):
-        """Return one-hot encoded probabilities where the closest class gets probability 1."""
-        predictions = self.predict(X)  # Get closest class indices
-        proba = numpy.zeros((X.shape[0], len(self.mean_features)))  # Initialize probability matrix
-        proba[numpy.arange(X.shape[0]), predictions] = 1  # Assign probability 1 to closest class
-        return proba
 
 def lecun_fix():
     # Yann moved his website to CloudFlare. You need this now
@@ -253,10 +218,6 @@ def main(args=None):
     if dataset.SETTING == "domain-il" and args.training_setting == "task-il":
         raise Exception("Task-IL training method is not compatible with a Domain-IL dataset. Please use Class-IL training with a Domain-IL dataset")
 
-    if args.log_feature_forgetting == 'all' and args.buffer_size == 0:
-        args.log_feature_forgetting = 'features'
-    elif args.log_feature_forgetting == 'buffer' and args.buffer_size == 0:
-        args.log_feature_forgetting = 'output'
 
     #get all dataset
     dataset_copy = get_dataset(args)
@@ -270,7 +231,15 @@ def main(args=None):
     dataset.all_train_loaders = all_train_loaders
     dataset.all_test_loaders = all_test_loaders
 
-    load_model_pca(model, dataset, args)
+    #your function
+    task = 10
+    args.loadcheck = f'/cluster/scratch/dammeier/mammoth_checkpoints/{args.ckpt_name}_{task}.pt'
+    model, past_res = mammoth_load_checkpoint(args, model)
+    model._current_task = 10
+    
+    #model.net is the backbone
+    #get_features(model, dataset, 'test_dataset', task, max_task) returns the features, either 'train_dataset
+
 
 def load_model_pca(model, dataset, args):
     start_from = -1
