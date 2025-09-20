@@ -299,7 +299,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
             if args.enable_other_metrics:
                 clustering_forgetting_logger.add_forgetting()
-            clustering_forgetting_logger.write(vars(args), 'buffer')
+            clustering_forgetting_logger.write(vars(args), 'clustering')
 
     if args.log_NC_metrics:
         logger_NC.write(model)

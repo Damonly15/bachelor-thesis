@@ -19,9 +19,12 @@ def calculate_variance(features, mean=None):
         mean = torch.mean(features, dim=0)
         bias_correction = -1
 
-    norms = torch.norm(features - mean, dim=1, p=2) ** 2
-    variance = norms.sum() / (norms.shape[0] + bias_correction)
-    
+    if features.ndim == 2:
+        features = torch.norm(features - mean, dim=1, p=2) ** 2
+    else:
+        features = features - mean
+
+    variance = features.sum() / (features.shape[0] + bias_correction)
     return variance
 
 class LoggerVersion:
@@ -271,6 +274,7 @@ class LoggerNC:
         U_tilde = U_tilde.T
         UT_U_tilde = U_tilde.T @ U_tilde
         self.rank.append(torch.linalg.matrix_rank(U_tilde).item())
+        projection = U_tilde @ torch.linalg.pinv(U_tilde)
 
         U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
         UT_U_tilde_normalized = U_tilde_normalized.T @ U_tilde_normalized  
@@ -370,7 +374,8 @@ class LoggerNC:
 
         
         train_features = train_features[train_tasklabels <= model.current_task]
-        model.projection = U_tilde @ torch.linalg.pinv(U_tilde)
+        if dataset.SETTING == 'domain-il':
+            model.projection = U_tilde @ torch.linalg.pinv(U_tilde)
         projection = model.projection
         complement_projection = torch.eye(projection.shape[0]) - projection
               
