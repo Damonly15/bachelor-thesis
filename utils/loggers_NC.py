@@ -21,10 +21,11 @@ def calculate_variance(features, mean=None):
 
     if features.ndim == 2:
         features = torch.norm(features - mean, dim=1, p=2) ** 2
+        variance = features.sum() / (features.shape[0] + bias_correction)
     else:
         features = features - mean
+        variance = features.pow(2).sum() / (features.shape[0] + bias_correction)
 
-    variance = features.sum() / (features.shape[0] + bias_correction)
     return variance
 
 class LoggerVersion:
@@ -244,6 +245,9 @@ class LoggerNC:
         all_test_means, tests_means = self.all_loggers['test_dataset'].log(dataset, model)
         self.all_loggers['test_dataset'].log_classifier(dataset, model)
 
+        if not ('buffer' in self.all_loggers):
+            return
+
         all_buffer_means, buffer_means = self.all_loggers['buffer'].log(dataset, model)
         self.all_loggers['buffer'].log_classifier(dataset, model)
 
@@ -254,8 +258,7 @@ class LoggerNC:
         else: 
             weights = [layer.weight.detach().cpu() for layer in model.net.classifier]
             classifier_weights = (torch.cat(weights, dim=0)[:model.n_seen_classes]).T
-        classifier_weights = (classifier_weights[:, -buffer_means.shape[0]:])
-
+        
         delta_mean = torch.norm(all_buffer_means - all_train_means[:model.cpt * (model.current_task+1)], dim=1, p=2)
 
         for task in range(model.current_task+1):
@@ -292,7 +295,7 @@ class LoggerNC:
             
             NC2_diagonal.append(torch.diag(U_tilde_normalized_block).mean().item())
             beta.append(torch.diag(U_tilde_block).mean().item())
-            var_diagonal.append(calculate_variance(torch.diag(U_tilde_normalized_block)).item())
+            var_diagonal.append(calculate_variance(torch.diag(U_tilde_block)).item())
 
             current_block = ~torch.eye(U_tilde_block.shape[0], dtype=torch.bool)
             NC2_off_diagonal.append(U_tilde_normalized_block[current_block].mean().item())
@@ -365,7 +368,7 @@ class LoggerNC:
 
         self.NC2_diagonal_together.append(torch.diag(UT_U_tilde_normalized).mean().item())
         self.beta_together.append(torch.diag(UT_U_tilde).mean().item())
-        self.var_diagonal_together.append(calculate_variance(torch.diag(UT_U_tilde_normalized)).item())
+        self.var_diagonal_together.append(calculate_variance(torch.diag(UT_U_tilde)).item())
 
         self.NC2_off_diagonal_together.append(UT_U_tilde_normalized[block_mask].mean().item())
         self.var_off_diagonal_together.append(calculate_variance(UT_U_tilde_normalized[block_mask]).item())

@@ -203,8 +203,6 @@ def clustering_til(model, dataset, num_iters):
                 # fallback: map directly from initialization
             cluster_to_label[k] = k
             #    print("fallback was used")
-    
-        print(cluster_to_label)
 
         dists = torch.cdist(current_test_features, cluster_means)  # (M, K)
         test_assignments = dists.argmin(dim=1)             # (M,)

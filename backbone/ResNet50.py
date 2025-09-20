@@ -148,9 +148,9 @@ class ResNet(MammothBackbone):
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         if cpt==-1:
-            self.classifier = nn.Linear(512 * block.expansion, num_classes, bias=bias)
+            self.classifier = nn.Linear(512 * block.expansion, num_classes, bias=False)
         else:
-            self.classifier = nn.ModuleList([nn.Linear(512 * block.expansion, cpt, bias=bias) for i in range(num_classes//cpt)])
+            self.classifier = nn.ModuleList([nn.Linear(512 * block.expansion, cpt, bias=False) for i in range(num_classes//cpt)])
         
 
         for m in self.modules():
