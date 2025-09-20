@@ -133,7 +133,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
 
     model.net.to(model.device)
-    checkpoint_path = f'/cluster/scratch/dammeier/mammoth_checkpoints'
+    checkpoint_path = f'./checkpoints'
     results = []
 
     dataset_copy = get_dataset(args)
