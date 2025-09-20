@@ -189,14 +189,7 @@ class ContinualModel(nn.Module):
         """
         Default way to handle load buffer.
         """
-        if version=='refitting':
-            self.buffer_refitting = buffer
-        elif version=='nobuffer':
-            self.buffer_nobuffer = buffer
-        else:
-            #assert buffer.examples.shape[0] == self.args.buffer_size, "Buffer size mismatch. Expected {} got {}".format(
-            #    self.args.buffer_size, buffer.examples.shape[0])
-            self.buffer = buffer
+        self.buffer = buffer
 
     def get_parameters(self):
         """

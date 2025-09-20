@@ -183,18 +183,20 @@ class LoggerNC:
         self.mean_shift = []
         self.mean_shift_together = []
 
-        self.orth_diagonal = []
-        self.orth_diagonal_together = []
+        self.var_diagonal = []
+        self.var_diagonal_together = []
         self.NC2_diagonal = []
         self.NC2_diagonal_together = []
+        self.beta = []
+        self.beta_together = []
 
-        self.orth_off_diagonal = []
-        self.orth_off_diagonal_together = []
+        self.var_off_diagonal = []
+        self.var_off_diagonal_together = []
         self.NC2_off_diagonal = []
         self.NC2_off_diagonal_together = []
         
-        self.orth_between_tasks = []
-        self.orth_between_tasks_together = []
+        self.var_between_tasks = []
+        self.var_between_tasks_together = []
         self.NC2_between_tasks = []
         self.NC2_between_tasks_together = []
 
@@ -221,10 +223,11 @@ class LoggerNC:
     def log(self, dataset: ContinualDataset, model: ContinualModel):
         mean_shift = []
 
-        orth_diagonal = []
+        var_diagonal = []
         NC2_diagonal = []
+        beta = []
         
-        orth_off_diagonal = []
+        var_off_diagonal = []
         NC2_off_diagonal = []
         
         NC3 = []
@@ -244,7 +247,7 @@ class LoggerNC:
         all_buffer_means, buffer_means = self.all_loggers['buffer'].log(dataset, model)
         self.all_loggers['buffer'].log_classifier(dataset, model)
 
-        self.mean_norm.append(torch.norm(train_means, dim=1).mean().item())
+        self.mean_norm.append(torch.norm(torch.mean(train_means, dim=0), dim=0, p=2).item())
 
         if isinstance(model.net.classifier, nn.Linear):
             classifier_weights = (model.net.classifier.weight.detach().cpu()[:model.n_seen_classes]).T
@@ -261,7 +264,7 @@ class LoggerNC:
 
         self.mean_shift_together.append(torch.norm(buffer_means - train_means[:model.n_seen_classes], dim=1, p=2).mean().item())
 
-        #For TIL and CIL I am doing the same computation twice. However, for DIL it makes a differnce, as U is calculated differently.
+        #Here we do the task wise computation
         U = all_buffer_means
 
         if (dataset.SETTING == 'class-il') and (model.args.training_setting == 'class-il'):
@@ -274,7 +277,7 @@ class LoggerNC:
         U_tilde = U_tilde.T
         UT_U_tilde = U_tilde.T @ U_tilde
         self.rank.append(torch.linalg.matrix_rank(U_tilde).item())
-        projection = U_tilde @ torch.linalg.pinv(U_tilde)
+        model.projection = U_tilde @ torch.linalg.pinv(U_tilde)
 
         U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
         UT_U_tilde_normalized = U_tilde_normalized.T @ U_tilde_normalized  
@@ -288,11 +291,12 @@ class LoggerNC:
             U_tilde_block = UT_U_tilde[lab:lab+model.cpt, lab:lab+model.cpt]
             
             NC2_diagonal.append(torch.diag(U_tilde_normalized_block).mean().item())
-            orth_diagonal.append(torch.diag(U_tilde_block).mean().item())
+            beta.append(torch.diag(U_tilde_block).mean().item())
+            var_diagonal.append(calculate_variance(torch.diag(U_tilde_normalized_block)).item())
 
             current_block = ~torch.eye(U_tilde_block.shape[0], dtype=torch.bool)
             NC2_off_diagonal.append(U_tilde_normalized_block[current_block].mean().item())
-            orth_off_diagonal.append(U_tilde_block[current_block].mean().item())
+            var_off_diagonal.append(calculate_variance(U_tilde_normalized_block[current_block]).item())
 
             block_mask[lab:lab+model.cpt, lab:lab+model.cpt] = current_block
             between_mask[lab:lab+model.cpt, lab:lab+model.cpt] = False
@@ -315,7 +319,7 @@ class LoggerNC:
             svd_complement.append(S[:-(model.n_seen_classes-1)].mean().item())
  
         self.NC2_between_tasks.append(UT_U_tilde_normalized[between_mask].mean().item())
-        self.orth_between_tasks.append(UT_U_tilde[between_mask].mean().item())
+        self.var_between_tasks.append(calculate_variance(UT_U_tilde_normalized[between_mask]).item())
 
         self.NC2_all_off_diagonal.append(UT_U_tilde_normalized[~torch.eye(UT_U_tilde_normalized.shape[0], dtype=torch.bool)].mean().item())
 
@@ -329,10 +333,11 @@ class LoggerNC:
                 block = classifier_weights.T @ U_tilde_normalized[:, lab:lab+model.cpt]
                 NC3.append(torch.diag(block).mean().item())
 
-        self.orth_diagonal.append(orth_diagonal)
+        self.var_diagonal.append(var_diagonal)
         self.NC2_diagonal.append(NC2_diagonal)
+        self.beta.append(beta)
 
-        self.orth_off_diagonal.append(orth_off_diagonal)
+        self.var_off_diagonal.append(var_off_diagonal)
         self.NC2_off_diagonal.append(NC2_off_diagonal)
 
         self.NC3.append(NC3)
@@ -359,13 +364,14 @@ class LoggerNC:
             between_mask= torch.zeros_like(UT_U_tilde, dtype=torch.bool)
 
         self.NC2_diagonal_together.append(torch.diag(UT_U_tilde_normalized).mean().item())
-        self.orth_diagonal_together.append(torch.diag(UT_U_tilde).mean().item())
+        self.beta_together.append(torch.diag(UT_U_tilde).mean().item())
+        self.var_diagonal_together.append(calculate_variance(torch.diag(UT_U_tilde_normalized)).item())
 
         self.NC2_off_diagonal_together.append(UT_U_tilde_normalized[block_mask].mean().item())
-        self.orth_off_diagonal_together.append(UT_U_tilde[block_mask].mean().item())
+        self.var_off_diagonal_together.append(calculate_variance(UT_U_tilde_normalized[block_mask]).item())
 
         self.NC2_between_tasks_together.append(UT_U_tilde_normalized[between_mask].mean().item())
-        self.orth_between_tasks_together.append(UT_U_tilde[between_mask].mean().item())
+        self.var_between_tasks_together.append(calculate_variance(UT_U_tilde_normalized[between_mask]).item())
 
         self.NC2_all_off_diagonal_together.append(UT_U_tilde_normalized[~torch.eye(UT_U_tilde_normalized.shape[0], dtype=torch.bool)].mean().item())
 
@@ -374,9 +380,9 @@ class LoggerNC:
 
         
         train_features = train_features[train_tasklabels <= model.current_task]
+        projection = U_tilde @ torch.linalg.pinv(U_tilde)
         if dataset.SETTING == 'domain-il':
-            model.projection = U_tilde @ torch.linalg.pinv(U_tilde)
-        projection = model.projection
+            model.projection = projection
         complement_projection = torch.eye(projection.shape[0]) - projection
               
         projected_features = (projection @ train_features.T).T
@@ -454,12 +460,12 @@ class LoggerNC:
                     wrargs['mean_shift_task' + str(i+1)] = fa
 
 
-                for i, fa in enumerate(self.orth_diagonal):
+                for i, fa in enumerate(self.var_diagonal):
                     for j, var in enumerate(fa):
-                        wrargs['orth_diagonal_' + str(j + 1) + '_task' + str(i+1)] = var
+                        wrargs['var_diagonal_' + str(j + 1) + '_task' + str(i+1)] = var
                 
-                for i, fa in enumerate(self.orth_diagonal_together):
-                    wrargs['orth_diagonal_task' + str(i+1)] = fa
+                for i, fa in enumerate(self.var_diagonal_together):
+                    wrargs['var_diagonal_task' + str(i+1)] = fa
 
                 for i, fa in enumerate(self.NC2_diagonal):
                     for j, var in enumerate(fa):
@@ -468,13 +474,20 @@ class LoggerNC:
                 for i, fa in enumerate(self.NC2_diagonal_together):
                     wrargs['NC2_diagonal_task' + str(i+1)] = fa
 
-
-                for i, fa in enumerate(self.orth_off_diagonal):
+                for i, fa in enumerate(self.beta):
                     for j, var in enumerate(fa):
-                        wrargs['orth_off_diagonal_' + str(j + 1) + '_task' + str(i+1)] = var
+                        wrargs['beta_' + str(j + 1) + '_task' + str(i+1)] = var
                 
-                for i, fa in enumerate(self.orth_off_diagonal_together):
-                    wrargs['orth_off_diagonal_task' + str(i+1)] = fa
+                for i, fa in enumerate(self.beta_together):
+                    wrargs['beta_task' + str(i+1)] = fa
+
+
+                for i, fa in enumerate(self.var_off_diagonal):
+                    for j, var in enumerate(fa):
+                        wrargs['var_off_diagonal_' + str(j + 1) + '_task' + str(i+1)] = var
+                
+                for i, fa in enumerate(self.var_off_diagonal_together):
+                    wrargs['var_off_diagonal_task' + str(i+1)] = fa
 
                 for i, fa in enumerate(self.NC2_off_diagonal):
                     for j, var in enumerate(fa):
@@ -484,11 +497,11 @@ class LoggerNC:
                     wrargs['NC2_off_diagonal_task' + str(i+1)] = fa
 
 
-                for i, fa in enumerate(self.orth_between_tasks):
-                    wrargs['orth_between_tasks_task' + str(i+1)] = fa
+                for i, fa in enumerate(self.var_between_tasks):
+                    wrargs['var_between_tasks_task' + str(i+1)] = fa
                 
-                for i, fa in enumerate(self.orth_between_tasks_together):
-                    wrargs['orth_between_tasks_together_task' + str(i+1)] = fa
+                for i, fa in enumerate(self.var_between_tasks_together):
+                    wrargs['var_between_tasks_together_task' + str(i+1)] = fa
 
                 for i, fa in enumerate(self.NC2_between_tasks):
                     wrargs['NC2_between_tasks_task' + str(i+1)] = fa

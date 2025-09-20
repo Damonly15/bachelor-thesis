@@ -123,7 +123,7 @@ def parse_args():
     if args.seed is not None:
         set_random_seed(args.seed)
 
-    if args.savecheck:
+    if args.savecheck or args.loadcheck:
         assert args.inference_only == 0, "Should not save checkpoint in inference only mode"
 
         now = time.strftime("%Y%m%d-%H%M%S")

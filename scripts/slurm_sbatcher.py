@@ -94,7 +94,7 @@ if __name__ == '__main__':
 {f"#SBATCH --mem-per-cpu={args.mem_per_cpu}G" if args.mem_per_cpu else ""}
 {f"#SBATCH --tmp={args.mem_scratch}G" if args.mem_scratch else ""}
 #SBATCH --gpus={args.gpus}
-#SBATCH --gres=gpumem:15g
+#SBATCH --gres=gpumem:18g
 #SBATCH --output="{os.path.join(outbase, args.name + r'_%A_%a.out')}"
 #SBATCH --error="{os.path.join(errbase, args.name + r'_%A_%a.out')}"
 
