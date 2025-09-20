@@ -125,7 +125,7 @@ class SequentialCIFAR100(ContinualDataset):
             cpt = SequentialCIFAR100.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1
-        bias=True
+        bias=False
 
         return resnet18(nclasses = SequentialCIFAR100.N_CLASSES, cpt=cpt, bias=bias)
 
@@ -145,7 +145,7 @@ class SequentialCIFAR100(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 50
+        return 100
 
     @staticmethod
     def get_batch_size():

@@ -185,7 +185,7 @@ class SequentialCUB200(ContinualDataset):
             cpt = SequentialCUB200.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1
-        bias=True
+        bias=False
             
         return resnet50(SequentialCUB200.N_CLASSES, pretrained=True, cpt=cpt, bias=bias)
 
@@ -210,4 +210,4 @@ class SequentialCUB200(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 40
+        return 50

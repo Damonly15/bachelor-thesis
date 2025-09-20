@@ -207,8 +207,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                         not_aug_inputs = not_aug_inputs.to(model.device)
                         loss = model.meta_observe(inputs, labels, not_aug_inputs, epoch=epoch)
                     assert not math.isnan(loss)
-                    if loss==-1:
-                        break
                     progress_bar.prog(i, data_len, epoch, t, loss)
                     i += 1
 
@@ -223,15 +221,15 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                     log_accs(args, logger, epoch_accs, t, dataset.SETTING, epoch=epoch)
                     args.disable_log = disable_log_state
 
-        model.meta_end_task(dataset)
+        model.store_features(dataset)
+
+        if args.log_NC_metrics:  
+            logger_NC.log(dataset, model)    
 
         accs = evaluate(model, dataset)
         results.append(accs)
 
         log_accs(args, logger, accs, t, dataset.SETTING)
-
-        if args.log_NC_metrics:  
-            logger_NC.log(dataset, model)
 
         if(args.log_feature_forgetting):
             full_accuracies = feature_forgetting(model, dataset, 'class-il')
@@ -242,6 +240,8 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
                 full_accuracies = clustering(model, dataset, args.training_setting)
                 log_accs(args, clustering_forgetting_logger, full_accuracies, t, dataset.SETTING)    
+
+        model.meta_end_task(dataset)
 
         if args.savecheck:
             save_obj = {
@@ -264,7 +264,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             torch.save(save_obj, checkpoint_name)
 
         #increase this at the end of a task    
-        model._current_task = model._current_task + 1
+        
 
     if args.validation:
         del dataset

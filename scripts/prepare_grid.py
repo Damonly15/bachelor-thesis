@@ -10,11 +10,11 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'test',
+        'name':'tinyimg',
         'combos': {
-            "dataset": ['seq-cifar100'],
-            "model": ['er_extra'],
-            "buffer_size": [0],
+            "dataset": ['inc-tinyimg'],
+            "model": ['er_balanced'],
+            "buffer_size": [0, 200, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 100000],
             "lr": [0.1],
             #"alpha": [0.1],
             #"beta": [2],
@@ -22,11 +22,11 @@ grid_combinations = [
             #"enable_other_metrics" : [1],
             "log_feature_forgetting": [1],
             "log_NC_metrics": [1],
-            "training_setting": ['task-il', 'class-il'],
+            "training_setting": ['class-il'],
             #"n_epochs": [150],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
-            "optim_wd": [0.01],
+            "optim_wd": [0.0005],
             #"joint": [1],
             #"eval_epochs": [1],
             "permute_classes": [1],

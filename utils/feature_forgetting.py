@@ -17,7 +17,7 @@ def buffer_forgetting(model, dataset, version):
     else:
         return feature_forgetting_til(model, dataset, 'buffer')
     
-def clustering(model, dataset, version, num_iters=2000):
+def clustering(model, dataset, version, num_iters=100):
     if version=='class-il':
         return clustering_cil(model, dataset, num_iters)
     else:
@@ -84,14 +84,18 @@ def evaluate_cil(model, dataset, head) -> Tuple[list, list]:
 
 def clustering_cil(model, dataset, num_iters):   
     buffer_features, buffer_labels, buffer_tasklabels = model.features['buffer']
-    #buffer_features = (model.projection @ buffer_features.T).T
+    seen_mask = buffer_tasklabels <= model.current_task
+    buffer_features = buffer_features[seen_mask]
+    buffer_labels = buffer_labels[seen_mask]
+    buffer_tasklabels = buffer_tasklabels[seen_mask]
+    buffer_features = (model.projection @ buffer_features.T).T
 
     test_features, test_labels, test_tasklabels = model.features['test_dataset']
     seen_mask = test_tasklabels <= model.current_task
     test_features = test_features[seen_mask]
     test_labels = test_labels[seen_mask]
     test_tasklabels = test_tasklabels[seen_mask]
-    #test_features = (model.projection @ test_features.T).T
+    test_features = (model.projection @ test_features.T).T
  
     # --- Initialization: cluster means = mean of buffer_features per label ---
     cluster_means = []
@@ -122,20 +126,18 @@ def clustering_cil(model, dataset, num_iters):
 
     cluster_to_label = {}
     for k in range(model.n_seen_classes):
-        labels_k = buffer_labels[buffer_assignments == k]
-        if len(labels_k) > 0:
+        #labels_k = buffer_labels[buffer_assignments == k]
+        #if len(labels_k) > 0:
         # majority vote
-            majority_label = labels_k.mode().values.item()
-            cluster_to_label[k] = majority_label
-        else:
+        #    majority_label = labels_k.mode().values.item()
+        #    cluster_to_label[k] = majority_label
+        #else:
             # fallback: map directly from initialization
-            cluster_to_label[k] = k
-            print("fallback was used")
-    
-    print(cluster_to_label)
+        cluster_to_label[k] = k
+        #    print("fallback was used")
 
     acc = []
-    for task in range(model.current_task + 1):
+    for task in range(model.current_task+1):
         dists = torch.cdist(test_features[task == test_tasklabels], cluster_means)  # (M, K)
         test_assignments = dists.argmin(dim=1)             # (M,)
 
@@ -149,12 +151,14 @@ def clustering_cil(model, dataset, num_iters):
 
 def clustering_til(model, dataset, num_iters):
     buffer_features, buffer_labels, buffer_tasklabels = model.features['buffer']
+    buffer_features = (model.projection @ buffer_features.T).T
 
     test_features, test_labels, test_tasklabels = model.features['test_dataset']
+    test_features = (model.projection @ test_features.T).T
 
     # --- Initialization: cluster means = mean of buffer_features per label ---
     acc = []
-    for task in range(model.current_task + 1):
+    for task in range(model.current_task+1):
         current_buffer_features = buffer_features[buffer_tasklabels == task]
         current_buffer_labels = buffer_labels[buffer_tasklabels == task] - (task*model.cpt)
 
@@ -190,15 +194,15 @@ def clustering_til(model, dataset, num_iters):
 
         cluster_to_label = {}
         for k in range(model.cpt):
-            labels_k = current_buffer_labels[buffer_assignments == k]
-            if len(labels_k) > 0:
+            #labels_k = current_buffer_labels[buffer_assignments == k]
+            #if len(labels_k) > 0:
             # majority vote
-                majority_label = labels_k.mode().values.item()
-                cluster_to_label[k] = majority_label
-            else:
+            #    majority_label = labels_k.mode().values.item()
+            #    cluster_to_label[k] = majority_label
+            #else:
                 # fallback: map directly from initialization
-                cluster_to_label[k] = k
-                print("fallback was used")
+            cluster_to_label[k] = k
+            #    print("fallback was used")
     
         print(cluster_to_label)
 

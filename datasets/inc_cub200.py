@@ -181,7 +181,7 @@ class IncrementalCUB200(ContinualDataset):
 
     @staticmethod
     def get_backbone(args, model_compatibility):
-        bias=True    
+        bias=False    
         return resnet50(IncrementalCUB200.N_CLASSES, pretrained=True, cpt=-1, bias=bias)
 
     @staticmethod
@@ -205,4 +205,4 @@ class IncrementalCUB200(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 40
+        return 50

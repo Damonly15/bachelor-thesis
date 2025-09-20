@@ -157,7 +157,7 @@ class IncrementalTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_backbone(args, model_compatibility):
-        bias=True
+        bias=False
         return resnet18(nclasses = IncrementalTinyImagenet.N_CLASSES, cpt=-1, bias=bias)
 
 
@@ -182,7 +182,7 @@ class IncrementalTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 100
+        return 150
 
     @staticmethod
     def get_batch_size():

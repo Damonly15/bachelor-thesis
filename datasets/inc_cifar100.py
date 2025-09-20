@@ -140,7 +140,7 @@ class IncrementalCIFAR100(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 50
+        return 100
 
     @staticmethod
     def get_batch_size():

@@ -51,22 +51,14 @@ class ErBalanced(ContinualModel):
         self.remainder[ones_indices] = 1 
 
         self.overall_batch_size = self.args.batch_size + self.args.minibatch_size
-        self.args.batch_size = math.ceil(self.overall_batch_size)
+        self.args.batch_size = self.overall_batch_size
         self.args.minibatch_size = 0
-
-        self.first_task_iterations = 0
-        self.current_task_iterations = 0 
+        self.original_epochs = self.args.n_epochs
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
         ER trains on the current task using the data provided, but also augments the batch with data from the buffer.
         """
-        if self.current_task > 0:
-            if self.first_task_iterations < self.current_task_iterations:
-                return -1
-            self.current_task_iterations += 1
-        else:
-            self.first_task_iterations += 1
 
         self.opt.zero_grad()
 
@@ -113,8 +105,8 @@ class ErBalanced(ContinualModel):
             else:
                 break
 
-        self.current_task_iterations = 0
         self.args.batch_size = math.ceil(self.overall_batch_size / (self.current_task+2))
         self.args.minibatch_size = self.overall_batch_size - self.args.batch_size
+        self.args.n_epochs = math.ceil(self.original_epochs * (self.args.batch_size / self.overall_batch_size))
 
         return
