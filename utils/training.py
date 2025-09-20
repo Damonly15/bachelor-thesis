@@ -164,17 +164,17 @@ def train(model: ContinualModel, dataset: ContinualDataset,
         print(args.loadcheck)
         model, past_res = mammoth_load_checkpoint(args, model)
 
-        for t in range(args.start_from):
-            train_loader, test_loader = dataset.get_data_loaders()
-            model.meta_begin_task(dataset)
-            model.meta_end_task(dataset)
-
         print('Checkpoint Loaded!')
 
     progress_bar = ProgressBar(joint=args.joint, verbose=not args.non_verbose)
 
     print(file=sys.stderr)
     end_task = dataset.N_TASKS if args.stop_after is None else args.stop_after
+
+    for t in range(args.start_from):
+        train_loader, test_loader = dataset.get_data_loaders()
+        model.meta_begin_task(dataset)
+    model._current_task = args.start_from
 
     torch.cuda.empty_cache()
 

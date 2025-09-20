@@ -282,6 +282,7 @@ class LoggerNC:
 
         U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
         UT_U_tilde_normalized = U_tilde_normalized.T @ U_tilde_normalized  
+        print(UT_U_tilde_normalized)
 
         block_mask = torch.zeros_like(UT_U_tilde, dtype=torch.bool)
         between_mask = torch.ones_like(UT_U_tilde, dtype=torch.bool)
@@ -358,6 +359,7 @@ class LoggerNC:
 
         U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
         UT_U_tilde_normalized = U_tilde_normalized.T @ U_tilde_normalized 
+        print(UT_U_tilde_normalized)
 
 
         if dataset.SETTING == 'domain-il':
@@ -366,7 +368,7 @@ class LoggerNC:
 
         self.NC2_diagonal_together.append(torch.diag(UT_U_tilde_normalized).mean().item())
         self.beta_together.append(torch.diag(UT_U_tilde).mean().item())
-        self.var_diagonal_together.append(calculate_variance(torch.diag(UT_U_tilde_normalized)).item())
+        self.var_diagonal_together.append(calculate_variance(torch.diag(UT_U_tilde)).item())
 
         self.NC2_off_diagonal_together.append(UT_U_tilde_normalized[block_mask].mean().item())
         self.var_off_diagonal_together.append(calculate_variance(UT_U_tilde_normalized[block_mask]).item())
