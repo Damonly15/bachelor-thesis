@@ -21,10 +21,11 @@ def calculate_variance(features, mean=None):
 
     if features.ndim == 2:
         features = torch.norm(features - mean, dim=1, p=2) ** 2
+        variance = features.sum() / (features.shape[0] + bias_correction)
     else:
         features = features - mean
+        variance = features.pow(2).sum() / (features.shape[0] + bias_correction)
 
-    variance = features.sum() / (features.shape[0] + bias_correction)
     return variance
 
 class LoggerVersion:
@@ -292,7 +293,7 @@ class LoggerNC:
             
             NC2_diagonal.append(torch.diag(U_tilde_normalized_block).mean().item())
             beta.append(torch.diag(U_tilde_block).mean().item())
-            var_diagonal.append(calculate_variance(torch.diag(U_tilde_normalized_block)).item())
+            var_diagonal.append(calculate_variance(torch.diag(U_tilde_block)).item())
 
             current_block = ~torch.eye(U_tilde_block.shape[0], dtype=torch.bool)
             NC2_off_diagonal.append(U_tilde_normalized_block[current_block].mean().item())
