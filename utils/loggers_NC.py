@@ -274,7 +274,7 @@ class LoggerNC:
         U_tilde = U_tilde.T
         UT_U_tilde = U_tilde.T @ U_tilde
         self.rank.append(torch.linalg.matrix_rank(U_tilde).item())
-        projection = U_tilde @ torch.linalg.pinv(U_tilde)
+        model.projection = U_tilde @ torch.linalg.pinv(U_tilde)
 
         U_tilde_normalized = U_tilde / U_tilde.norm(dim=0, keepdim=True, p=2)
         UT_U_tilde_normalized = U_tilde_normalized.T @ U_tilde_normalized  
