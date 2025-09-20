@@ -19,7 +19,7 @@ def calculate_variance(features, mean=None):
         mean = torch.mean(features, dim=0)
         bias_correction = -1
 
-    features = torch.norm(features - mean, dim=1, p=2) ** 2
+    norms = torch.norm(features - mean, dim=1, p=2) ** 2
     variance = norms.sum() / (norms.shape[0] + bias_correction)
     
     return variance
