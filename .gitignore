@@ -100,3 +100,7 @@ jobsubmission_temp.sh
 utils/plotter.py
 out.err
 out.txt
+error.log
+output.log
+utils/temporaty.txt
+env
