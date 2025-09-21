@@ -23,6 +23,8 @@ from utils.feature_forgetting import feature_forgetting, clustering, buffer_forg
 from utils.loggers_NC import LoggerNC
 from utils import create_if_not_exists
 
+import ipdb
+
 try:
     import wandb
 except ImportError:
@@ -136,6 +138,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     checkpoint_path = f'./checkpoints'
     results = []
 
+
     dataset_copy = get_dataset(args)
     all_train_loaders = []
     all_test_loaders = []
@@ -226,9 +229,12 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                     log_accs(args, logger, epoch_accs, t, dataset.SETTING, epoch=epoch)
                     args.disable_log = disable_log_state
 
-        model.store_features(dataset)
 
-        if args.log_NC_metrics:  
+        # ipdb.set_trace()
+        model.store_features(dataset)
+        # ipdb.set_trace()
+
+        if args.log_NC_metrics: 
             logger_NC.log(dataset, model)    
 
         accs = evaluate(model, dataset)

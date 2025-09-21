@@ -4,6 +4,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 from typing import Tuple
+import ipdb
 
 def feature_forgetting(model, dataset, version):
     if version=='class-il':
@@ -57,6 +58,8 @@ def evaluate_til(model, dataset, heads) -> Tuple[list, list]:
     return accs
 
 def feature_forgetting_cil(model, dataset, version):
+    # ipdb.set_trace()
+
     all_features, all_labels, all_tasklabels = model.features[version]
     current_features = all_features[all_tasklabels <= model.current_task]
     current_labels = all_labels[all_tasklabels <= model.current_task]
@@ -70,6 +73,7 @@ def feature_forgetting_cil(model, dataset, version):
 def evaluate_cil(model, dataset, head) -> Tuple[list, list]:
     test_features, test_labels, test_tasklabels = model.features['test_dataset']
 
+
     accs = []
     for task in range(model.current_task+1):
         current_features = test_features[test_tasklabels == task]
@@ -82,27 +86,48 @@ def evaluate_cil(model, dataset, head) -> Tuple[list, list]:
         accs.append((pred == current_labels).float().mean().item() * 100)     
     return accs
 
-def clustering_cil(model, dataset, num_iters):   
+def clustering_cil(model, dataset, num_iters):  
+
     buffer_features, buffer_labels, buffer_tasklabels = model.features['buffer']
-    seen_mask = buffer_tasklabels <= model.current_task
+    seen_mask = buffer_tasklabels < model.current_task
     buffer_features = buffer_features[seen_mask]
     buffer_labels = buffer_labels[seen_mask]
     buffer_tasklabels = buffer_tasklabels[seen_mask]
     buffer_features = (model.projection @ buffer_features.T).T
 
     test_features, test_labels, test_tasklabels = model.features['test_dataset']
-    seen_mask = test_tasklabels <= model.current_task
+    seen_mask = test_tasklabels < model.current_task
     test_features = test_features[seen_mask]
     test_labels = test_labels[seen_mask]
     test_tasklabels = test_tasklabels[seen_mask]
     test_features = (model.projection @ test_features.T).T
+
+    # giulia: used this to store features for debugging (leave commented)
+    # torch.save(
+    #     {
+    #         "buffer_features": buffer_features,   # (N, D)
+    #         "buffer_labels": buffer_labels,       # (N,)
+    #         "buffer_tasklabels": buffer_tasklabels,          # (N,)
+    #         "test_features": test_features,       # (M, D)   
+    #         "test_labels": test_labels,           # (M,)
+    #         "test_tasklabels": test_tasklabels,   # (M,)
+    #     },
+    #     "features_store.pt"
+    # )
+
+    # --- Normalize all features to unit norm ---
+    #buffer_features = F.normalize(buffer_features, dim=1)
+    test_features   = F.normalize(test_features, dim=1)
+
  
     # --- Initialization: cluster means = mean of buffer_features per label ---
     cluster_means = []
-    for label in range(model.n_seen_classes):
+    for label in range(model.n_seen_classes - dataset.N_CLASSES_PER_TASK):
         cluster_means.append(buffer_features[buffer_labels == label].mean(dim=0))
     cluster_means = torch.stack(cluster_means) # (K, D)
+    cluster_means = F.normalize(cluster_means, dim=1)  # normalize cluster means too
 
+    # ipdb.set_trace()
     for _ in range(num_iters):
         # --- E-step: assign test_features to nearest cluster ---
         dists = torch.cdist(test_features, cluster_means) # (M, K)
@@ -110,7 +135,7 @@ def clustering_cil(model, dataset, num_iters):
 
         # --- M-step: update cluster means using test_features ---
         new_means = []
-        for k in range(model.n_seen_classes):
+        for k in range(model.n_seen_classes - dataset.N_CLASSES_PER_TASK):
             assigned = test_features[test_assignments == k]
             if len(assigned) > 0:
                 new_means.append(assigned.mean(dim=0))
@@ -125,7 +150,7 @@ def clustering_cil(model, dataset, num_iters):
     buffer_assignments = dists_buf.argmin(dim=1) # (N,)
 
     cluster_to_label = {}
-    for k in range(model.n_seen_classes):
+    for k in range(model.n_seen_classes - dataset.N_CLASSES_PER_TASK):
         #labels_k = buffer_labels[buffer_assignments == k]
         #if len(labels_k) > 0:
         # majority vote
@@ -137,7 +162,7 @@ def clustering_cil(model, dataset, num_iters):
         #    print("fallback was used")
 
     acc = []
-    for task in range(model.current_task+1):
+    for task in range(model.current_task):
         dists = torch.cdist(test_features[task == test_tasklabels], cluster_means)  # (M, K)
         test_assignments = dists.argmin(dim=1)             # (M,)
 
@@ -145,7 +170,7 @@ def clustering_cil(model, dataset, num_iters):
         pred_labels = torch.tensor(
             [cluster_to_label[int(c.item())] for c in test_assignments])
 
-        # Accuracy
+        # Accuracy on the previous tasks
         acc.append((pred_labels == test_labels[task == test_tasklabels]).float().mean().item() * 100)
     return acc
 
@@ -221,23 +246,28 @@ def get_features(model, dataset, version, max_task, feat_or_log="features"):
     model_status = model.net.training
     model.net.eval()
 
+    batch_size = 1024 # model.args.batch_size
+
+    print(version) #TODO remove
+
+
     if version == 'buffer':        
         buf_x, all_labels, all_tasklabels = model.buffer.get_all_data(transform=model.transform)
 
         all_features = []
-        for i in range(0, buf_x.shape[0], model.args.batch_size):
-            inputs = buf_x[i: i+model.args.batch_size]
-            current_labels = all_tasklabels[i: i+model.args.batch_size]
+        for i in range(0, buf_x.shape[0], batch_size):
+            inputs = buf_x[i: i+batch_size]
+            current_labels = all_tasklabels[i: i+batch_size]
             inputs = inputs.to(model.device)
 
             if feat_or_log=="features":
-                features = model.net.forward(inputs, returnt="features").detach().cpu()
+                features = model.net.forward(inputs, returnt="features")
             elif feat_or_log=="logits":
-                features = model.net.forward(inputs, task_label=current_labels).detach().cpu()
+                features = model.net.forward(inputs, task_label=current_labels)
 
             all_features.append(features)
             
-        all_features = torch.cat(all_features, dim=0)
+        all_features = torch.cat(all_features, dim=0).detach().cpu()
     elif version == 'train_dataset' or version == 'test_dataset':
         all_features, all_labels, all_tasklabels = [], [], []
         
@@ -247,8 +277,19 @@ def get_features(model, dataset, version, max_task, feat_or_log="features"):
             dataloader = dataset.all_test_loaders
 
         for current_task, source in enumerate(dataloader):
+
             if current_task > max_task:
                 break
+
+            # increasing the batch size 
+            dataset = source.dataset
+            source = torch.utils.data.DataLoader(
+                dataset,
+                batch_size=batch_size,
+                shuffle=False,  # or True if needed
+                num_workers=4,
+                pin_memory=True
+            )
 
             for data in source:
                 if version == 'train_dataset':
@@ -262,16 +303,16 @@ def get_features(model, dataset, version, max_task, feat_or_log="features"):
                 inputs = inputs.to(model.device)
 
                 if feat_or_log=="features":
-                    features = model.net.forward(inputs, returnt="features").detach().cpu()
+                    features = model.net.forward(inputs, returnt="features")
                 elif feat_or_log=="logits":
                     task_label = torch.ones(labels.shape[0], dtype=torch.int64, device=model.device) * current_task
-                    features = model.net.forward(inputs, task_label=task_label).detach().cpu()
+                    features = model.net.forward(inputs, task_label=task_label)
 
                 all_features.append(features)
                 all_labels.append(labels)
                 all_tasklabels.append(torch.ones(labels.shape[0], dtype=torch.int64) * current_task)
 
-        all_features = torch.cat(all_features, dim=0)
+        all_features = torch.cat(all_features, dim=0).detach().cpu()
         all_labels = torch.cat(all_labels, dim=0)
         all_tasklabels = torch.cat(all_tasklabels, dim=0)        
     else:
