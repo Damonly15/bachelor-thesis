@@ -86,71 +86,130 @@ def evaluate_cil(model, dataset, head) -> Tuple[list, list]:
         accs.append((pred == current_labels).float().mean().item() * 100)     
     return accs
 
+
+def compute_pooled_cov(X, K):
+    """
+    Compute pooled covariance matrix of features X [N, D].
+    Returns covariance [D, D].
+    """
+    Xc = X - X.mean(dim=0, keepdim=True)
+    Sigma = (Xc.T @ Xc) / (Xc.shape[0] - K + 1e-12)  # unbiased covariance
+    # regularize (shrink) for stability
+    eps = 1e-5 * torch.trace(Sigma).item() / Xc.shape[1]
+    Sigma += eps * torch.eye(Xc.shape[1])
+    return Sigma
+
+def whiten_features(test_features, K):
+    """
+    Nearest mean classifier with whitening using pooled test covariance.
+    """
+    # --- Compute pooled covariance of test set ---
+    Sigma = compute_pooled_cov(test_features, K)
+    # compute whitening transform (Sigma^{-1/2})
+    eigvals, eigvecs = torch.linalg.eigh(Sigma)  # ascending
+    inv_sqrt = eigvecs @ torch.diag(1.0 / torch.sqrt(eigvals)) @ eigvecs.t()
+
+    test_features_whitened = (test_features - test_features.mean(dim=0)) @ inv_sqrt.t()
+    
+    return test_features_whitened, inv_sqrt
+
 def clustering_cil(model, dataset, num_iters):  
 
     buffer_features, buffer_labels, buffer_tasklabels = model.features['buffer']
-    seen_mask = buffer_tasklabels < model.current_task
+    seen_mask = buffer_tasklabels <= model.current_task
     buffer_features = buffer_features[seen_mask]
     buffer_labels = buffer_labels[seen_mask]
     buffer_tasklabels = buffer_tasklabels[seen_mask]
-    buffer_features = (model.projection @ buffer_features.T).T
+    old_tasks_mask = buffer_tasklabels < model.current_task
+    buffer_features_old = buffer_features[old_tasks_mask]
+    buffer_labels_old = buffer_labels[old_tasks_mask]
+    buffer_tasklabels_old = buffer_tasklabels[old_tasks_mask]
+    # buffer_features_proj = (model.projection @ buffer_features.T).T
 
     test_features, test_labels, test_tasklabels = model.features['test_dataset']
-    seen_mask = test_tasklabels < model.current_task
+    seen_mask = test_tasklabels <= model.current_task
     test_features = test_features[seen_mask]
     test_labels = test_labels[seen_mask]
     test_tasklabels = test_tasklabels[seen_mask]
-    test_features = (model.projection @ test_features.T).T
+    # test_features_proj = (model.projection @ test_features.T).T
 
-    # giulia: used this to store features for debugging (leave commented)
+    # create a balanced buffer: equal number of samples per task
+    buffer_size = model.args.buffer_size
+    last_task_mask = buffer_tasklabels == model.current_task
+    buffer_features_last = buffer_features[last_task_mask]
+    buffer_labels_last = buffer_labels[last_task_mask]
+    buffer_tasklabels_last = buffer_tasklabels[last_task_mask]
+
+    # Subsample last task to match previous tasks' buffer size
+    num_last_samples = min(buffer_size, buffer_features_last.shape[0])
+    indices = torch.randperm(buffer_features_last.shape[0])[:num_last_samples]
+
+    buffer_features_last = buffer_features_last[indices]
+    buffer_labels_last = buffer_labels_last[indices]
+    buffer_tasklabels_last = buffer_tasklabels_last[indices]
+
+    # Combine old tasks + balanced last task
+    buffer_features_balanced = torch.cat([buffer_features_old, buffer_features_last], dim=0)
+    buffer_labels_balanced = torch.cat([buffer_labels_old, buffer_labels_last], dim=0)
+    buffer_tasklabels_balanced = torch.cat([buffer_tasklabels_old, buffer_tasklabels_last], dim=0)
+
+
+    # # giulia: used this to store features for debugging (leave commented)
     # torch.save(
     #     {
     #         "buffer_features": buffer_features,   # (N, D)
+    #         "buffer_features_proj": buffer_features_proj,
     #         "buffer_labels": buffer_labels,       # (N,)
     #         "buffer_tasklabels": buffer_tasklabels,          # (N,)
     #         "test_features": test_features,       # (M, D)   
+    #         "test_features_projected": test_features_proj,
     #         "test_labels": test_labels,           # (M,)
     #         "test_tasklabels": test_tasklabels,   # (M,)
     #     },
-    #     "features_store.pt"
+    #     f"features_store_{model.current_task}.pt"
     # )
 
     # --- Normalize all features to unit norm ---
     #buffer_features = F.normalize(buffer_features, dim=1)
-    test_features   = F.normalize(test_features, dim=1)
+    # test_features   = F.normalize(test_features, dim=1)
+
+    # --- Normalize all features to unit norm ---
+    buffer_features_ = F.normalize(buffer_features_balanced - buffer_features_balanced.mean(dim=0), dim=1)
+    # test_features_   = F.normalize(test_features - test_features.mean(dim=0), dim=1)  
+    test_features_, M = whiten_features(test_features, model.n_seen_classes)
 
  
     # --- Initialization: cluster means = mean of buffer_features per label ---
     cluster_means = []
-    for label in range(model.n_seen_classes - dataset.N_CLASSES_PER_TASK):
-        cluster_means.append(buffer_features[buffer_labels == label].mean(dim=0))
+    for label in range(model.n_seen_classes):
+        cluster_means.append(buffer_features_[buffer_labels_balanced == label].mean(dim=0))
     cluster_means = torch.stack(cluster_means) # (K, D)
-    cluster_means = F.normalize(cluster_means, dim=1)  # normalize cluster means too
+    # cluster_means = F.normalize(cluster_means, dim=1)  # normalize cluster means too
 
     # ipdb.set_trace()
-    for _ in range(num_iters):
-        # --- E-step: assign test_features to nearest cluster ---
-        dists = torch.cdist(test_features, cluster_means) # (M, K)
-        test_assignments = dists.argmin(dim=1) # (M,)
+    # for _ in range(1):
+    #     # --- E-step: assign test_features to nearest cluster ---
+    #     dists = torch.cdist(test_features_, cluster_means) # (M, K)
+    #     test_assignments = dists.argmin(dim=1) # (M,)
 
-        # --- M-step: update cluster means using test_features ---
-        new_means = []
-        for k in range(model.n_seen_classes - dataset.N_CLASSES_PER_TASK):
-            assigned = test_features[test_assignments == k]
-            if len(assigned) > 0:
-                new_means.append(assigned.mean(dim=0))
-            else:
-            # if no test feature assigned, keep old mean
-                new_means.append(cluster_means[k])
-                print("fallback was used")
-        cluster_means = torch.stack(new_means)
+        # # --- M-step: update cluster means using test_features ---
+        # new_means = []
+        # for k in range(model.n_seen_classes - dataset.N_CLASSES_PER_TASK):
+        #     assigned = test_features[test_assignments == k]
+        #     if len(assigned) > 0:
+        #         new_means.append(assigned.mean(dim=0))
+        #     else:
+        #     # if no test feature assigned, keep old mean
+        #         new_means.append(cluster_means[k])
+        #         print("fallback was used")
+        # cluster_means = torch.stack(new_means)
 
     # --- Final label assignment: use buffer_features to map clusters -> labels ---
-    dists_buf = torch.cdist(buffer_features, cluster_means) # (N, K)
-    buffer_assignments = dists_buf.argmin(dim=1) # (N,)
+    # dists_buf = torch.cdist(buffer_features, cluster_means) # (N, K)
+    # buffer_assignments = dists_buf.argmin(dim=1) # (N,)
 
     cluster_to_label = {}
-    for k in range(model.n_seen_classes - dataset.N_CLASSES_PER_TASK):
+    for k in range(model.n_seen_classes):
         #labels_k = buffer_labels[buffer_assignments == k]
         #if len(labels_k) > 0:
         # majority vote
@@ -162,8 +221,8 @@ def clustering_cil(model, dataset, num_iters):
         #    print("fallback was used")
 
     acc = []
-    for task in range(model.current_task):
-        dists = torch.cdist(test_features[task == test_tasklabels], cluster_means)  # (M, K)
+    for task in range(model.current_task+1):
+        dists = torch.cdist(test_features_[task == test_tasklabels], cluster_means)  # (M, K)
         test_assignments = dists.argmin(dim=1)             # (M,)
 
         # Map cluster indices → predicted labels
