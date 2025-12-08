@@ -86,15 +86,15 @@ if __name__ == '__main__':
     all_com_str = "".join([f"' {s} '\n" for s in all_com]).strip()
     filec = f"""#!/bin/bash
 
-#SBATCH -n 1
 #SBATCH -A es_ilic
 #SBATCH --job-name={args.name}
 #SBATCH --time={args.timelimit}
+#SBATCH -n 1
 {f"#SBATCH --cpus-per-task={args.cpus}" if args.cpus is not None else ""}
 {f"#SBATCH --mem-per-cpu={args.mem_per_cpu}G" if args.mem_per_cpu else ""}
 {f"#SBATCH --tmp={args.mem_scratch}G" if args.mem_scratch else ""}
 #SBATCH --gpus={args.gpus}
-#SBATCH --gres=gpumem:18g
+#SBATCH --gres=gpumem:10g
 #SBATCH --output="{os.path.join(outbase, args.name + r'_%A_%a.out')}"
 #SBATCH --error="{os.path.join(errbase, args.name + r'_%A_%a.out')}"
 
@@ -103,11 +103,25 @@ if __name__ == '__main__':
 
 {f"source {args.bashrc}" if args.bashrc is not None else ""}
 
+
+module purge
+module load stack/2024-05
+module load eth_proxy
+module load git/2.42.0
+module load cuda/12.2.1
+module load python/3.10.13_cuda
+module load cudnn/9.2.0
+
+
+source ~/virtual_environments/mammoth-bachelorthesis_env/bin/activate
+
+
 args=(
 {all_com_str}
 )
 export PYTHONPATH={os.getcwd()}
 cd {os.getcwd()}
+
 
 """ + jobstring + '\nwait'
 

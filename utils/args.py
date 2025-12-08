@@ -119,7 +119,8 @@ def add_management_args(parser: ArgumentParser) -> None:
                             help='Additionally evaluate performance witha fitted head.')
     parser.add_argument('--log_NC_metrics', type=int, default=0, choices=[0, 1], required=False,
                             help='Additionally evaluate NC metrics. It evaluate NC metrics on the replay buffer, a second buffer not used during replay and samples from the test set')
-
+    parser.add_argument('--store_features', type=int, default=0, choices=[0, 1], required=False,
+                            help='Store features at the end of training')
 
 
 def add_rehearsal_args(parser: ArgumentParser) -> None:

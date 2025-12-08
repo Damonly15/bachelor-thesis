@@ -107,7 +107,7 @@ def parse_args():
 
     tmp_dset_class = get_dataset_class(args)
     n_epochs = tmp_dset_class.get_epochs()
-    if args.model == 'er-balanced' and args.n_epochs is None:
+    if (args.model == 'er-balanced' or args.model == 'er-metrics') and args.n_epochs is None:
         args.n_epochs = n_epochs * 2 #compensate for the fact that er balanced has a bigger batch size for the first task
     elif args.n_epochs is None:
         args.n_epochs = n_epochs
@@ -131,9 +131,6 @@ def parse_args():
         args.ckpt_name = f"{extra_ckpt_name}_{args.dataset}_{args.training_setting}_{args.model}_{args.buffer_size if hasattr(args, 'buffer_size') else 0}_{args.seed}"
         print("Saving checkpoint into", args.ckpt_name, file=sys.stderr)
 
-    if args.joint:
-        assert args.start_from is None and args.stop_after is None, "Joint training does not support start_from and stop_after"
-        assert args.enable_other_metrics == 0, "Joint training does not support other metrics"
 
     assert 0 < args.label_perc <= 1, "label_perc must be in (0, 1]"
 

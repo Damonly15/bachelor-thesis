@@ -40,6 +40,7 @@ from utils.kornia_utils import to_kornia_transform
 from utils.magic import persistent_locals
 from torchvision import transforms
 from utils.feature_forgetting import get_features
+from utils import create_if_not_exists
 
 with suppress(ImportError):
     import wandb
@@ -321,7 +322,12 @@ class ContinualModel(nn.Module):
         self._current_task = self._current_task + 1
 
     def store_features(self, dataset):
-        for version in ['train_dataset', 'test_dataset', 'buffer']:
+        if self.NAME in ['er_balanced', 'er_metrics', 'er_test1', 'er_test2', 'er_test3', 'er_test4']:
+            versions = ['train_dataset', 'test_dataset', 'buffer']
+        else:
+            versions = ['train_dataset', 'test_dataset']
+
+        for version in versions:
             if version == 'buffer':
                 train_features, train_labels, train_tasklabels = self.features['train_dataset']
                 mask = train_tasklabels == self.current_task
@@ -332,14 +338,28 @@ class ContinualModel(nn.Module):
                 if self.args.buffer_size < (dataset.N_CLASSES_PER_TASK * dataset.N_TASKS) or self.current_task==0:
                     self.features[version] = train_features, train_labels, train_tasklabels
                 else:
-                    buffer_features, buffer_labels, buffer_tasklabels = get_features(self, dataset, version, dataset.N_TASKS)
+                    buffer_features, buffer_labels, buffer_tasklabels = get_features(self, dataset, version, self.current_task)
                     buffer_features = torch.cat((buffer_features, train_features), dim=0)
                     buffer_labels = torch.cat((buffer_labels, train_labels), dim=0)
                     buffer_tasklabels = torch.cat((buffer_tasklabels, train_tasklabels), dim=0)
             
                     self.features[version] = buffer_features, buffer_labels, buffer_tasklabels
             else:
-                self.features[version] = get_features(self, dataset, version, dataset.N_TASKS)
+                self.features[version] = get_features(self, dataset, version, self.current_task)
+
+        if (self.args.store_features) and (self.current_task + 1 == dataset.N_TASKS):
+            path = f'/cluster/scratch/dammeier/features/{self.args.dataset}'
+            create_if_not_exists(path)
+            path = path + f'/bs{self.args.buffer_size}_s{self.args.seed}.pth'
+
+            train_features, train_labels, train_tasklabels = self.features['train_dataset']
+            test_features, test_labels, test_tasklabels = self.features['test_dataset']
+            buffer_features, buffer_labels, buffer_tasklabels = self.features['buffer']
+
+            torch.save({"train_features": train_features, "train_labels": train_labels, "train_tasklabels": train_tasklabels,
+                        "test_features": test_features, "test_labels": test_labels, "test_tasklabels": test_tasklabels,
+                        "buffer_features": buffer_features, "buffer_labels": buffer_labels, "buffer_tasklabels": buffer_tasklabels}, path)
+
 
     @abstractmethod
     def observe(self, inputs: torch.Tensor, labels: torch.Tensor,

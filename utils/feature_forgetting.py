@@ -117,7 +117,6 @@ def clustering_cil(model, dataset, num_iters):
             else:
             # if no test feature assigned, keep old mean
                 new_means.append(cluster_means[k])
-                print("fallback was used")
         cluster_means = torch.stack(new_means)
 
     # --- Final label assignment: use buffer_features to map clusters -> labels ---
@@ -184,7 +183,6 @@ def clustering_til(model, dataset, num_iters):
                 else:
                 # if no test feature assigned, keep old mean
                     new_means.append(cluster_means[k])
-                    print("fallback was used")
                     
             cluster_means = torch.stack(new_means)
 
@@ -231,13 +229,13 @@ def get_features(model, dataset, version, max_task, feat_or_log="features"):
             inputs = inputs.to(model.device)
 
             if feat_or_log=="features":
-                features = model.net.forward(inputs, returnt="features").detach().cpu()
+                features = model.net.forward(inputs, returnt="features")
             elif feat_or_log=="logits":
-                features = model.net.forward(inputs, task_label=current_labels).detach().cpu()
+                features = model.net.forward(inputs, task_label=current_labels)
 
             all_features.append(features)
             
-        all_features = torch.cat(all_features, dim=0)
+        all_features = torch.cat(all_features, dim=0).detach().cpu()
     elif version == 'train_dataset' or version == 'test_dataset':
         all_features, all_labels, all_tasklabels = [], [], []
         
@@ -262,16 +260,16 @@ def get_features(model, dataset, version, max_task, feat_or_log="features"):
                 inputs = inputs.to(model.device)
 
                 if feat_or_log=="features":
-                    features = model.net.forward(inputs, returnt="features").detach().cpu()
+                    features = model.net.forward(inputs, returnt="features")
                 elif feat_or_log=="logits":
                     task_label = torch.ones(labels.shape[0], dtype=torch.int64, device=model.device) * current_task
-                    features = model.net.forward(inputs, task_label=task_label).detach().cpu()
+                    features = model.net.forward(inputs, task_label=task_label)
 
                 all_features.append(features)
                 all_labels.append(labels)
                 all_tasklabels.append(torch.ones(labels.shape[0], dtype=torch.int64) * current_task)
 
-        all_features = torch.cat(all_features, dim=0)
+        all_features = torch.cat(all_features, dim=0).detach().cpu()
         all_labels = torch.cat(all_labels, dim=0)
         all_tasklabels = torch.cat(all_tasklabels, dim=0)        
     else:

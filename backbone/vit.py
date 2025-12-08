@@ -309,9 +309,9 @@ class VisionTransformer(MammothBackbone):
         # Classifier Head
         self.fc_norm = norm_layer(embed_dim) if use_fc_norm else nn.Identity()
         if cpt==-1:
-            self.classifier = nn.Linear(self.embed_dim, num_classes, bias=False)
+            self.classifier = nn.Linear(self.embed_dim, num_classes)
         else:
-            self.classifier = nn.ModuleList([nn.Linear(self.embed_dim, cpt, bias=False) for i in range(num_classes//cpt)])
+            self.classifier = nn.ModuleList([nn.Linear(self.embed_dim, cpt) for i in range(num_classes//cpt)])
 
 
         if weight_init != 'skip':

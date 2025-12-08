@@ -247,7 +247,13 @@ def store_masked_loaders(train_dataset: Dataset, test_dataset: Dataset,
     test_dataset.targets = test_dataset.targets[test_mask]
 
     if setting.SETTING == 'domain-il':
-        train_dataset.targets = train_dataset.targets - setting.i
+        if setting.args.joint:
+            for task in range(setting.N_TASKS):
+                train_mask = np.logical_and(np.array(train_dataset.targets) >= setting.N_CLASSES_PER_TASK * task,
+                                np.array(train_dataset.targets) < setting.N_CLASSES_PER_TASK * (task+1))
+                train_dataset.targets[train_mask] = train_dataset.targets[train_mask] - setting.N_CLASSES_PER_TASK * task
+        else:
+            train_dataset.targets = train_dataset.targets - setting.i
         test_dataset.targets = test_dataset.targets - setting.i
 
     train_dataset, test_dataset = _prepare_data_loaders(train_dataset, test_dataset, setting)

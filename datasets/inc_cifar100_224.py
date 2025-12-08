@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 from torchvision.transforms.functional import InterpolationMode
 
 from backbone.vit import vit_backbone
-from datasets.seq_cifar100 import TCIFAR100, MyCIFAR100
+from datasets.inc_cifar100 import TCIFAR100, MyCIFAR100
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_masked_loaders)
@@ -32,7 +32,7 @@ class IncrementalCIFAR100224(ContinualDataset):
         TEST_TRANSFORM (torchvision.transforms): transformation to apply to the test data.
     """
 
-    NAME = 'seq-cifar100-224'
+    NAME = 'inc-cifar100-224'
     SETTING = 'domain-il'
     N_CLASSES_PER_TASK = 10
     N_TASKS = 10
@@ -61,7 +61,7 @@ class IncrementalCIFAR100224(ContinualDataset):
                                    download=True, transform=transform)
         test_dataset = TCIFAR100(base_path() + 'CIFAR100', train=False,
                                  download=True, transform=test_transform)
-
+        
         train, test = store_masked_loaders(train_dataset, test_dataset, self)
 
         return train, test
@@ -73,7 +73,8 @@ class IncrementalCIFAR100224(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone(args, model_compatibility):      
+    def get_backbone(args, model_compatibility):
+        cpt = -1      
         return vit_backbone(IncrementalCIFAR100224.N_CLASSES, pretrained=True, cpt=cpt)
 
     @staticmethod
@@ -92,7 +93,7 @@ class IncrementalCIFAR100224(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 10
+        return 15
 
     @staticmethod
     def get_batch_size():

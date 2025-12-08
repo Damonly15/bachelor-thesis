@@ -12,7 +12,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torchvision.datasets import CIFAR100
 
-from backbone.ResNet18 import resnet18
+from backbone.ResNet18_bottleneck import resnet18_bottleneck
 from datasets.transforms.denormalization import DeNormalize
 from datasets.utils.continual_dataset import (ContinualDataset,
                                               store_masked_loaders)
@@ -70,7 +70,7 @@ class MyCIFAR100(CIFAR100):
         return img, target, not_aug_img
 
 
-class IncrementalCIFAR100(ContinualDataset):
+class IncrementalCIFAR100Chunks(ContinualDataset):
     """Sequential CIFAR100 Dataset.
 
     Args:
@@ -84,11 +84,11 @@ class IncrementalCIFAR100(ContinualDataset):
         STD (tuple): standard deviation of the dataset.
         TRANSFORM (torchvision.transforms): transformation to apply to the data."""
 
-    NAME = 'inc-cifar100'
+    NAME = 'inc-cifar100-chunks'
     SETTING = 'domain-il'
-    N_CLASSES_PER_TASK = 10
-    N_TASKS = 10
-    N_CLASSES = 10
+    N_CLASSES_PER_TASK = 25
+    N_TASKS = 4
+    N_CLASSES = 25
     N_SAMPLES = 50000
     SIZE = (32, 32)
     MEAN, STD = (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
@@ -116,12 +116,12 @@ class IncrementalCIFAR100(ContinualDataset):
     @staticmethod
     def get_transform():
         transform = transforms.Compose(
-            [transforms.ToPILImage(), IncrementalCIFAR100.TRANSFORM])
+            [transforms.ToPILImage(), IncrementalCIFAR100Chunks.TRANSFORM])
         return transform
 
     @staticmethod
     def get_backbone(args, model_compatibility):
-        return resnet18(nclasses = IncrementalCIFAR100.N_CLASSES, cpt=-1)
+        return resnet18_bottleneck(nclasses = IncrementalCIFAR100Chunks.N_CLASSES, n_feats=10, cpt=-1)
 
     @staticmethod
     def get_loss():
@@ -129,12 +129,12 @@ class IncrementalCIFAR100(ContinualDataset):
 
     @staticmethod
     def get_normalization_transform():
-        transform = transforms.Normalize(IncrementalCIFAR100.MEAN, IncrementalCIFAR100.STD)
+        transform = transforms.Normalize(IncrementalCIFAR100Chunks.MEAN, IncrementalCIFAR100Chunks.STD)
         return transform
 
     @staticmethod
     def get_denormalization_transform():
-        transform = DeNormalize(IncrementalCIFAR100.MEAN, IncrementalCIFAR100.STD)
+        transform = DeNormalize(IncrementalCIFAR100Chunks.MEAN, IncrementalCIFAR100Chunks.STD)
         return transform
 
     @staticmethod

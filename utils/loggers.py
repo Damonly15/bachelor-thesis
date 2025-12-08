@@ -72,7 +72,7 @@ def print_mean_accuracy(accs: np.ndarray, task_number: int,
     Returns:
         The mean accuracy value.
     """
-    mean_acc = np.mean(accs, axis=0)
+    mean_acc = sum(accs) / len(accs)
 
     """ if joint:
         prefix = "Joint Accuracy" if epoch is None else f"Joint Accuracy (epoch {epoch})"
@@ -190,7 +190,7 @@ class Logger:
         self.forgetting = forgetting(copy.deepcopy(self.fullaccs))
         #self.forgetting_mask_classes = forgetting(results_mask_classes)
 
-    def log(self, mean_acc: np.ndarray) -> None:
+    def log(self, mean_acc) -> None:
         """
         Logs a mean accuracy value.
 

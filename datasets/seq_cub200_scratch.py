@@ -127,7 +127,7 @@ class CUB200(MyCUB200):
         return ret_tuple
 
 
-class SequentialCUB200(ContinualDataset):
+class SequentialCUB200Scratch(ContinualDataset):
     """Sequential CUB200 Dataset.
 
     Args:
@@ -141,7 +141,7 @@ class SequentialCUB200(ContinualDataset):
         TRANSFORM (torchvision.transforms): transformation to apply to the data.
         TEST_TRANSFORM (torchvision.transforms): transformation to apply to the test data.
     """
-    NAME = 'seq-cub200'
+    NAME = 'seq-cub200-scratch'
     SETTING = 'class-il'
     N_CLASSES_PER_TASK = 20
     N_TASKS = 10
@@ -176,17 +176,17 @@ class SequentialCUB200(ContinualDataset):
     @staticmethod
     def get_transform():
         transform = transforms.Compose(
-            [transforms.ToPILImage(), SequentialCUB200.TRANSFORM])
+            [transforms.ToPILImage(), SequentialCUB200Scratch.TRANSFORM])
         return transform
 
     @staticmethod
     def get_backbone(args, model_compatibility):
         if (args.training_setting == 'task-il') and ('task-il' in model_compatibility):
-            cpt = SequentialCUB200.N_CLASSES_PER_TASK #get backbone with different heads
+            cpt = SequentialCUB200Scratch.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1
             
-        return resnet50(SequentialCUB200.N_CLASSES, pretrained=True, cpt=cpt)
+        return resnet50(SequentialCUB200Scratch.N_CLASSES, pretrained=False, cpt=cpt)
 
     @staticmethod
     def get_loss():
@@ -195,12 +195,12 @@ class SequentialCUB200(ContinualDataset):
     @staticmethod
     def get_normalization_transform():
         transform = transforms.Normalize(
-            SequentialCUB200.MEAN, SequentialCUB200.STD)
+            SequentialCUB200Scratch.MEAN, SequentialCUB200Scratch.STD)
         return transform
 
     @staticmethod
     def get_denormalization_transform():
-        transform = DeNormalize(SequentialCUB200.MEAN, SequentialCUB200.STD)
+        transform = DeNormalize(SequentialCUB200Scratch.MEAN, SequentialCUB200Scratch.STD)
         return transform
 
     @staticmethod

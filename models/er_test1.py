@@ -14,16 +14,17 @@ Example usage:
 # LICENSE file in the root directory of this source tree.
 
 import torch
+import torch.nn as nn
 import math
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
 from utils.buffer import Buffer
 from utils.training import evaluate
-from utils.feature_forgetting import feature_forgetting_cil
+from utils.feature_forgetting import get_features
 
-class ErBalanced(ContinualModel):
-    NAME = 'er_balanced'
+class ErTest1(ContinualModel):
+    NAME = 'er_test1'
     #this needs task boundaries
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il']
 
@@ -42,7 +43,7 @@ class ErBalanced(ContinualModel):
         """
         The ER model maintains a buffer of previously seen examples and uses them to augment the current batch during training.
         """
-        super(ErBalanced, self).__init__(backbone, loss, args, transform)
+        super(ErTest1, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
 
         remainder = self.args.buffer_size % (self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)
@@ -108,3 +109,34 @@ class ErBalanced(ContinualModel):
             self.args.n_epochs = math.ceil(self.original_epochs * (self.args.batch_size / self.overall_batch_size))
 
         return
+
+    @torch.no_grad()
+    def begin_task(self, dataset):
+        if (self.current_task == 0):
+            return
+        buffer_features, buffer_labels, buffer_tasklabels = self.features['buffer']
+
+        if isinstance(self.net.classifier, nn.Linear):
+            classifier_weights = self.net.classifier.weight.detach().cpu()[self.n_past_classes:self.n_seen_classes]
+        else: 
+            classifier_weights = self.net.classifier[self.current_task].weight.detach().cpu()
+        
+        old_mean_norm = []
+        for lab in buffer_labels.unique(sorted=True):
+            current_mean = torch.norm(torch.mean(buffer_features[lab == buffer_labels], dim=0), dim=0)
+            old_mean_norm.append(current_mean.item())
+        old_mean_norm = sum(old_mean_norm) / len(old_mean_norm) 
+        
+        new_mean_norm = torch.mean(torch.norm(classifier_weights, dim=1), dim=0)
+        print(f"Current task: {self.current_task}, old norm: {old_mean_norm}, new norm: {new_mean_norm}")
+
+        gamma = old_mean_norm / new_mean_norm
+
+        if isinstance(self.net.classifier, nn.Linear):
+            self.net.classifier.weight[self.n_past_classes:self.n_seen_classes] *= gamma
+        else:
+            self.net.classifier[self.current_task].weight *= gamma
+        return
+
+
+        

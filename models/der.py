@@ -32,30 +32,26 @@ class Der(ContinualModel):
         self.opt.zero_grad()
         tot_loss = 0
 
-        if self.args.training_setting == 'class-il':
-            task_labels = None
-        else: 
-            task_labels = self.current_task
-            labels = labels - (task_labels*self.cpt) 
+        task_labels = torch.ones(labels.shape[0], dtype=torch.int64, device=self.device) * self.current_task
+        if self.args.training_setting == 'task-il':
+            labels = labels - (self.current_task*self.cpt) 
 
         outputs = self.net.forward(inputs, task_label=task_labels)
         loss = self.loss(outputs, labels)
         loss.backward()
         tot_loss += loss.item()
 
-        if not self.buffer.is_empty():
-            buf_inputs, buf_logits, buf_tasklabels = self.buffer.get_data(
+        if (self.args.buffer_size) > 0 and (not self.buffer.is_empty()):
+            buf_inputs, _, buf_logits, buf_tasklabels = self.buffer.get_data(
                 self.args.minibatch_size, transform=self.transform, device=self.device)
-            if self.args.training_setting == 'class-il':
-                buf_outputs = self.net.forward(buf_inputs, task_label=None)
-            else:
-                buf_outputs = self.net.forward(buf_inputs, task_label=buf_tasklabels)
+            buf_outputs = self.net.forward(buf_inputs, task_label=buf_tasklabels)
 
             loss_mse = self.args.alpha * F.mse_loss(buf_outputs, buf_logits)
             loss_mse.backward()
             tot_loss += loss_mse.item()
 
         self.opt.step()
-        self.buffer.add_data(examples=not_aug_inputs, logits=outputs.detach(), task_labels=(torch.ones(not_aug_inputs.shape[0], dtype=torch.int64, device=self.device) * self.current_task))
+        if self.args.buffer_size > 0:
+            self.buffer.add_data(examples=not_aug_inputs.cpu(), labels=labels.cpu(), logits=outputs.detach().cpu(), task_labels=task_labels.cpu())
 
         return tot_loss

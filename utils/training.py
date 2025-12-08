@@ -148,13 +148,11 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     dataset.all_test_loaders = all_test_loaders
 
     logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
-    if (args.log_feature_forgetting):
+    if args.log_feature_forgetting:
         feature_forgetting_loggers = []
         feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))
         if dataset.SETTING != 'domain-il':
             feature_forgetting_loggers.append(Logger(dataset.SETTING, dataset.NAME, model.NAME))   
-        if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
-            clustering_forgetting_logger = Logger(dataset.SETTING, dataset.NAME, model.NAME)
 
     if args.log_NC_metrics:
         logger_NC = LoggerNC(model)
@@ -226,15 +224,11 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                     log_accs(args, logger, epoch_accs, t, dataset.SETTING, epoch=epoch)
                     args.disable_log = disable_log_state
 
-        model.store_features(dataset)
+        if args.log_NC_metrics or args.log_feature_forgetting or args.store_features:
+            model.store_features(dataset)
 
         if args.log_NC_metrics:  
             logger_NC.log(dataset, model)    
-
-        accs = evaluate(model, dataset)
-        results.append(accs)
-
-        log_accs(args, logger, accs, t, dataset.SETTING)
 
         if(args.log_feature_forgetting):
             full_accuracies = feature_forgetting(model, dataset, 'class-il')
@@ -242,9 +236,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             if dataset.SETTING != 'domain-il':
                 full_accuracies = feature_forgetting(model, dataset, 'task-il')
                 log_accs(args, feature_forgetting_loggers[1], full_accuracies, t, dataset.SETTING)   
-            if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
-                full_accuracies = clustering(model, dataset, args.training_setting)
-                log_accs(args, clustering_forgetting_logger, full_accuracies, t, dataset.SETTING)    
 
         if args.savecheck:
             save_obj = {
@@ -263,6 +254,10 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             torch.save(save_obj, checkpoint_name)  
 
         model.meta_end_task(dataset)
+
+        accs = evaluate(model, dataset)
+        results.append(accs)
+        log_accs(args, logger, accs, t, dataset.SETTING)
         
 
     if args.validation:
@@ -294,11 +289,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
             if args.enable_other_metrics:
                 feature_forgetting_loggers[1].add_forgetting()
             feature_forgetting_loggers[1].write(vars(args), 'features_til')
-
-        if (model.NAME in ["er", "er_balanced"] and args.buffer_size >= dataset.N_CLASSES_PER_TASK * dataset.N_TASKS):
-            if args.enable_other_metrics:
-                clustering_forgetting_logger.add_forgetting()
-            clustering_forgetting_logger.write(vars(args), 'clustering')
 
     if args.log_NC_metrics:
         logger_NC.write(model)

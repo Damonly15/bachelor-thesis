@@ -161,8 +161,7 @@ class SequentialTinyImagenet(ContinualDataset):
         else:
             cpt = -1
 
-        bias=False
-        return resnet18(nclasses = SequentialTinyImagenet.N_CLASSES, cpt=cpt, bias=bias)
+        return resnet18(nclasses = SequentialTinyImagenet.N_CLASSES, cpt=cpt)
 
 
     @staticmethod
@@ -186,7 +185,7 @@ class SequentialTinyImagenet(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 150
+        return 100
 
     @staticmethod
     def get_batch_size():

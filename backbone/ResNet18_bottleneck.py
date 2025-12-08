@@ -91,13 +91,13 @@ class BasicBlock(nn.Module):
         return out
 
 
-class ResNet(MammothBackbone):
+class ResNetBottleneck(MammothBackbone):
     """
     ResNet network architecture. Designed for complex datasets.
     """
 
     def __init__(self, block: BasicBlock, num_blocks: List[int],
-                 num_classes: int, nf: int, pretrained: bool, cpt: int, bias=True) -> None:
+                 num_classes: int, n_feats: int, nf: int, pretrained: bool, cpt: int, bias=True) -> None:
         """
         Instantiates the layers of the network.
 
@@ -107,7 +107,7 @@ class ResNet(MammothBackbone):
             num_classes: the number of output classes
             nf: the number of filters
         """
-        super(ResNet, self).__init__()
+        super(ResNetBottleneck, self).__init__()
         self.return_prerelu = False
         self.device = "cpu"
         self.in_planes = nf
@@ -121,10 +121,16 @@ class ResNet(MammothBackbone):
         self.layer2 = self._make_layer(block, nf * 2, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, nf * 4, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, nf * 8, num_blocks[3], stride=2)
+        self.bottleneck = nn.Sequential(
+            nn.Linear(nf * 8 * block.expansion, n_feats),
+            nn.BatchNorm1d(n_feats),
+            nn.ReLU(inplace=True)
+        )
+
         if cpt==-1:
-            self.classifier = nn.Linear(nf * 8 * block.expansion, num_classes, bias=bias)
+            self.classifier = nn.Linear(n_feats, num_classes, bias=bias)
         else:
-            self.classifier = nn.ModuleList([nn.Linear(nf * 8 * block.expansion, cpt, bias=bias) for i in range(num_classes//cpt)])
+            self.classifier = nn.ModuleList([nn.Linear(n_feats, cpt, bias=bias) for i in range(num_classes//cpt)])
 
         if pretrained:
             ckpt = torch.hub.load_state_dict_from_url(model_urls['resnet18'], progress=True, check_hash=True)
@@ -191,6 +197,7 @@ class ResNet(MammothBackbone):
 
         feature = avg_pool2d(out_4, out_4.shape[2])  # -> 512, 1, 1
         feature = feature.view(feature.size(0), -1)  # 512
+        feature = self.bottleneck(feature)
 
         if returnt == 'features':
             return feature
@@ -221,7 +228,7 @@ class ResNet(MammothBackbone):
             out = all_outputs[batch_idx, task_label] 
         return out
 
-def resnet18(nclasses: int, nf: int = 64, pretrained=False, cpt: int=-1, bias=True, num_block=[2, 2, 2, 2]) -> ResNet:
+def resnet18_bottleneck(nclasses: int, n_feats: int, nf: int = 64, pretrained=False, cpt: int=-1, bias=True) -> ResNetBottleneck:
     """
     Instantiates a ResNet18 network.
 
@@ -232,5 +239,5 @@ def resnet18(nclasses: int, nf: int = 64, pretrained=False, cpt: int=-1, bias=Tr
     Returns:
         ResNet network
     """
-    return ResNet(BasicBlock, num_block, nclasses, nf, pretrained, cpt, bias)
+    return ResNetBottleneck(BasicBlock, [2, 2, 2, 2], nclasses, n_feats, nf, pretrained, cpt, bias)
 

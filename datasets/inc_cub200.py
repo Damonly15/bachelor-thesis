@@ -180,9 +180,8 @@ class IncrementalCUB200(ContinualDataset):
         return transform
 
     @staticmethod
-    def get_backbone(args, model_compatibility):
-        bias=False    
-        return resnet50(IncrementalCUB200.N_CLASSES, pretrained=True, cpt=-1, bias=bias)
+    def get_backbone(args, model_compatibility): 
+        return resnet50(IncrementalCUB200.N_CLASSES, pretrained=True, cpt=-1)
 
     @staticmethod
     def get_loss():
@@ -201,8 +200,8 @@ class IncrementalCUB200(ContinualDataset):
 
     @staticmethod
     def get_batch_size():
-        return 32
+        return 16
 
     @staticmethod
     def get_epochs():
-        return 50
+        return 40

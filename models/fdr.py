@@ -51,22 +51,19 @@ class Fdr(ContinualModel):
                 )
         counter = 0
         with torch.no_grad():
-            for i, data in enumerate(dataset.train_loader):
+            for data in dataset.train_loader:
                 inputs, labels, not_aug_inputs = data
                 inputs = inputs.to(self.device)
-                if self.args.training_setting == 'class-il':
-                    task_label = None
-                else:
-                    task_label = self.current_task
-                outputs = self.net.forward(inputs, task_label)
+
+                task_labels = torch.ones(labels.shape[0], dtype=torch.int64, device=self.device) * self.current_task
+                outputs = self.net.forward(inputs, task_labels)
                                     
                 if examples_per_task - counter < 0:
                     break
                 self.buffer.add_data(examples=not_aug_inputs[:(examples_per_task - counter)],
                                     labels=labels[:(examples_per_task - counter)],
                                     logits=(outputs.detach().cpu())[:(examples_per_task - counter)],
-                                    task_labels=(torch.ones(self.args.batch_size, dtype=torch.int64) * self.current_task)
-                                                [:(examples_per_task - counter)])
+                                    task_labels=task_labels.cpu()[:(examples_per_task - counter)])
                 counter += self.args.batch_size
 
         self.net.train(tng)
@@ -77,18 +74,15 @@ class Fdr(ContinualModel):
         self.opt.zero_grad()
         tot_loss = 0
 
-        if self.args.training_setting == 'class-il':
-            task_labels = None
-        else: 
-            task_labels = torch.ones(batch_size,  dtype=torch.int64, device=self.device) * self.current_task
-            labels = labels - (task_labels*self.cpt)
+        task_labels = torch.ones(batch_size,  dtype=torch.int64, device=self.device) * self.current_task
+        if self.args.training_setting == 'task-il':
+            labels = labels - (self.current_task*self.cpt)
 
         if not self.buffer.is_empty():
             buf_inputs, _, buf_logits, buf_tasklabels = self.buffer.get_data(self.args.minibatch_size,
                                                             transform=self.transform, device=self.device)
             inputs=torch.cat((inputs, buf_inputs), dim=0)
-            if self.args.training_setting == 'task-il':
-                task_labels = torch.cat((task_labels, buf_tasklabels), dim=0)
+            task_labels = torch.cat((task_labels, buf_tasklabels), dim=0)
 
         outputs = self.net.forward(inputs, task_label=task_labels)
 

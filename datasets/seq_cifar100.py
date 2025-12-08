@@ -125,9 +125,8 @@ class SequentialCIFAR100(ContinualDataset):
             cpt = SequentialCIFAR100.N_CLASSES_PER_TASK #get backbone with different heads
         else:
             cpt = -1
-        bias=False
 
-        return resnet18(nclasses = SequentialCIFAR100.N_CLASSES, cpt=cpt, bias=bias)
+        return resnet18(nclasses = SequentialCIFAR100.N_CLASSES, cpt=cpt)
 
     @staticmethod
     def get_loss():

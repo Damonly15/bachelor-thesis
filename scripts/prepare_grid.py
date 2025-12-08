@@ -10,23 +10,23 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'tinyimg',
+        'name':'cifar100_other',
         'combos': {
-            "dataset": ['inc-tinyimg'],
-            "model": ['er_balanced'],
-            "buffer_size": [0, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 100000],
+            "dataset": ['seq-cifar100', 'inc-cifar100'],
+            "training_setting": ['class-il', 'task-il'],
+            "optim_wd": [0.00001],
+            "model": ['icarl'],
+            "buffer_size": [0, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 50000],
             "lr": [0.1],
-            #"alpha": [0.1],
+            #"alpha": [0.3],
             #"beta": [2],
             "seed": [1000, 2000, 3000],
             #"enable_other_metrics" : [1],
-            "log_feature_forgetting": [1],
-            "log_NC_metrics": [1],
-            "training_setting": ['class-il'],
-            #"n_epochs": [150],
+            #"log_feature_forgetting": [1],
+            #"log_NC_metrics": [1],
+            #"n_epochs": [10],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
-            "optim_wd": [0, 0.0005],
             #"joint": [1],
             #"eval_epochs": [1],
             "permute_classes": [1],
@@ -34,8 +34,10 @@ grid_combinations = [
             #"savecheck": [True]
             #"n_epochs": [1],
             #"start_from": [8]
-            #"stop_after": [4]
+            #"stop_after": [3],
             #"eval_epochs": [5]
+            #'store_features': [1],
+            #"disable_log":  [1]
         },
     },
 ]

@@ -14,15 +14,17 @@ Example usage:
 # LICENSE file in the root directory of this source tree.
 
 import torch
+import torch.nn as nn
+import math
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
 from utils.buffer import Buffer
 from utils.training import evaluate
-from utils.feature_forgetting import feature_forgetting_cil
+from utils.feature_forgetting import get_features
 
-class Er(ContinualModel):
-    NAME = 'er'
+class ErTest3(ContinualModel):
+    NAME = 'er_test3'
     #this needs task boundaries
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il']
 
@@ -41,13 +43,18 @@ class Er(ContinualModel):
         """
         The ER model maintains a buffer of previously seen examples and uses them to augment the current batch during training.
         """
-        super(Er, self).__init__(backbone, loss, args, transform)
+        super(ErTest3, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
 
         remainder = self.args.buffer_size % (self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)
         ones_indices = torch.randperm(self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)[:remainder]
         self.remainder = torch.zeros(self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)
         self.remainder[ones_indices] = 1 
+
+        self.overall_batch_size = self.args.batch_size + self.args.minibatch_size
+        self.args.batch_size = self.overall_batch_size
+        self.args.minibatch_size = 0
+        self.original_epochs = self.args.n_epochs
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
@@ -71,7 +78,7 @@ class Er(ContinualModel):
             labels = torch.cat((labels, buf_labels), dim=0)
 
         outputs = self.net.forward(inputs, task_label=task_labels)
-        loss = self.loss(outputs, labels)
+        loss = self.loss(outputs[:, :self.n_seen_classes], labels)
         loss.backward()
                       
         self.opt.step()
@@ -79,7 +86,7 @@ class Er(ContinualModel):
         return loss.item()
 
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
-        examples_per_class = self.args.buffer_size // (dataset.N_CLASSES_PER_TASK * dataset.N_TASKS)
+        examples_per_class = self.args.buffer_size // (dataset.N_CLASSES_PER_TASK * dataset.N_TASKS)  
         ce = torch.tensor([examples_per_class] * self.cpt) + self.remainder[self.current_task*self.cpt:(self.current_task+1)*self.cpt]
 
         for data in dataset.train_loader:
@@ -92,11 +99,65 @@ class Er(ContinualModel):
                     flags[j] = True
                     ce[labels[j] % self.cpt] -= 1
 
-            if not torch.all(~flags):
-                self.buffer.add_data(examples=not_aug_inputs[flags],
-                                    labels=labels[flags],
-                                    task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
-            else:
-                break
+            self.buffer.add_data(examples=not_aug_inputs[flags],
+                                labels=labels[flags],
+                                task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
+
+        if self.args.buffer_size != 0:
+            self.args.batch_size = math.ceil(self.overall_batch_size / (self.current_task+2))
+            self.args.minibatch_size = self.overall_batch_size - self.args.batch_size
+            self.args.n_epochs = math.ceil(self.original_epochs * (self.args.batch_size / self.overall_batch_size))
 
         return
+
+    @torch.no_grad()
+    def begin_task(self, dataset):
+        if (self.current_task == 0):
+            feat_in = 512
+            
+            for task in range(dataset.N_TASKS):
+                num_classes = (task+1) * self.cpt
+                a = torch.randn(size=(feat_in, num_classes))
+                P, _ = torch.linalg.qr(a)
+                assert torch.allclose(torch.matmul(P.T, P), torch.eye(num_classes), atol=1e-05), torch.max(torch.abs(torch.matmul(P.T, P) - torch.eye(num_classes)))
+
+                I = torch.eye(num_classes)
+                one = torch.ones(num_classes, num_classes)
+
+                M = torch.sqrt(torch.tensor(num_classes / (num_classes - 1))) * torch.matmul(P, I-((1/num_classes) * one))
+                M = M.T[task*self.cpt:(task+1)*self.cpt]
+
+                if isinstance(self.net.classifier, nn.Linear):
+                    self.net.classifier.weight[task*self.cpt:(task+1)*self.cpt].copy_(M.to(self.device))
+                else:
+                    self.net.classifier[task].weight.copy_(M.to(self.device))
+            return
+
+        buffer_features, buffer_labels, buffer_tasklabels = self.features['buffer']
+
+        if isinstance(self.net.classifier, nn.Linear):
+            classifier_weights = self.net.classifier.weight.detach().cpu()[self.n_past_classes:self.n_seen_classes]
+        else: 
+            classifier_weights = self.net.classifier[self.current_task].weight.detach().cpu()
+        
+        old_mean_norm = []
+        for lab in buffer_labels.unique(sorted=True):
+            current_mean = torch.norm(torch.mean(buffer_features[lab == buffer_labels], dim=0), dim=0)
+            old_mean_norm.append(current_mean.item())
+        old_mean_norm = sum(old_mean_norm) / len(old_mean_norm) 
+        
+        new_mean_norm = torch.mean(torch.norm(classifier_weights, dim=1), dim=0)
+        print(f"Current task: {self.current_task}, old norm: {old_mean_norm}, new norm: {new_mean_norm}")
+
+        gamma = old_mean_norm / new_mean_norm
+
+        if isinstance(self.net.classifier, nn.Linear):
+            self.net.classifier.weight[self.n_past_classes:self.n_seen_classes] *= gamma
+        else:
+            self.net.classifier[self.current_task].weight *= gamma
+        return
+
+
+
+
+        

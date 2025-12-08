@@ -97,7 +97,7 @@ class SequentialCIFAR100224(ContinualDataset):
 
     @staticmethod
     def get_epochs():
-        return 10
+        return 15
 
     @staticmethod
     def get_batch_size():

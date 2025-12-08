@@ -14,7 +14,6 @@ Example usage:
 # LICENSE file in the root directory of this source tree.
 
 import torch
-import math
 
 from models.utils.continual_model import ContinualModel
 from utils.args import add_rehearsal_args, ArgumentParser
@@ -22,8 +21,8 @@ from utils.buffer import Buffer
 from utils.training import evaluate
 from utils.feature_forgetting import feature_forgetting_cil
 
-class ErBalanced(ContinualModel):
-    NAME = 'er_balanced'
+class Er(ContinualModel):
+    NAME = 'er'
     #this needs task boundaries
     COMPATIBILITY = ['class-il', 'domain-il', 'task-il']
 
@@ -42,18 +41,13 @@ class ErBalanced(ContinualModel):
         """
         The ER model maintains a buffer of previously seen examples and uses them to augment the current batch during training.
         """
-        super(ErBalanced, self).__init__(backbone, loss, args, transform)
+        super(Er, self).__init__(backbone, loss, args, transform)
         self.buffer = Buffer(self.args.buffer_size)
 
         remainder = self.args.buffer_size % (self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)
         ones_indices = torch.randperm(self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)[:remainder]
         self.remainder = torch.zeros(self.dataset.N_CLASSES_PER_TASK*self.dataset.N_TASKS)
         self.remainder[ones_indices] = 1 
-
-        self.overall_batch_size = self.args.batch_size + self.args.minibatch_size
-        self.args.batch_size = self.overall_batch_size
-        self.args.minibatch_size = 0
-        self.original_epochs = self.args.n_epochs
 
     def observe(self, inputs, labels, not_aug_inputs, epoch=None):
         """
@@ -77,7 +71,7 @@ class ErBalanced(ContinualModel):
             labels = torch.cat((labels, buf_labels), dim=0)
 
         outputs = self.net.forward(inputs, task_label=task_labels)
-        loss = self.loss(outputs[:, :self.n_seen_classes], labels)
+        loss = self.loss(outputs, labels)
         loss.backward()
                       
         self.opt.step()
@@ -85,7 +79,7 @@ class ErBalanced(ContinualModel):
         return loss.item()
 
     def end_task(self, dataset): #Changed this for the paper, it is from xder. It makes sure, that every class has the same amount of samples in the buffer.
-        examples_per_class = self.args.buffer_size // (dataset.N_CLASSES_PER_TASK * dataset.N_TASKS)  
+        examples_per_class = self.args.buffer_size // (dataset.N_CLASSES_PER_TASK * dataset.N_TASKS)
         ce = torch.tensor([examples_per_class] * self.cpt) + self.remainder[self.current_task*self.cpt:(self.current_task+1)*self.cpt]
 
         for data in dataset.train_loader:
@@ -102,9 +96,5 @@ class ErBalanced(ContinualModel):
                                 labels=labels[flags],
                                 task_labels=(torch.ones(len(flags), dtype=torch.int64) * self.current_task)[flags])
 
-        if self.args.buffer_size != 0:
-            self.args.batch_size = math.ceil(self.overall_batch_size / (self.current_task+2))
-            self.args.minibatch_size = self.overall_batch_size - self.args.batch_size
-            self.args.n_epochs = math.ceil(self.original_epochs * (self.args.batch_size / self.overall_batch_size))
 
         return

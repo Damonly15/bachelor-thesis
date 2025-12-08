@@ -9,9 +9,8 @@ This module implements the simplest form of incremental training, i.e., finetuni
 
 from models.utils.continual_model import ContinualModel
 from utils.args import ArgumentParser
-from datasets.seq_cifar100 import SequentialCIFAR100
-from datasets.seq_tinyimagenet import SequentialTinyImagenet
-from datasets.seq_cub200 import SequentialCUB200
+
+import torch
 
 
 class Sgd(ContinualModel):
@@ -36,11 +35,7 @@ class Sgd(ContinualModel):
         SGD trains on the current task using the data provided, with no countermeasures to avoid forgetting.
         """
         self.opt.zero_grad()
-        if self.args.training_setting == "class-il":
-            task_labels=None
-        else:
-            task_labels = labels // self.cpt
-            labels = labels - (task_labels*self.cpt)
+        task_labels = torch.ones(labels.shape[0], dtype=torch.int64, device=self.device) * self.current_task
 
         outputs = self.net.forward(inputs, task_label=task_labels)
         loss = self.loss(outputs, labels)
