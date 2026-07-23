@@ -20,7 +20,7 @@ if __name__ == '__main__':
     parser.add_argument('--ddp', type=int, default=0, help='Use DistributedDataParallel. If 1, use torch.distributed.run', choices=[0, 1])
     parser.add_argument('--nodes', type=int, default=1, help='How many nodes to use. Only used if ddp=1')
     parser.add_argument('--debug', action="store_true", help='Run all jobs in debug_mode for 1 epoch')
-    parser.add_argument('--timelimit', '--time', type=str, default="1-0", help='Time limit in slurm format')
+    parser.add_argument('--timelimit', '--time', type=str, default="0-3", help='Time limit in slurm format')
     parser.add_argument('--per_job', type=int, default=1, help='How many jobs to run per slurm job')
     parser.add_argument('--excludelist', type=str, default=None, help='Nodes to exclude from the job')
     parser.add_argument('--account', '-A', type=str, default=None, help='Slurm account')
