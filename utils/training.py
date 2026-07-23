@@ -3,7 +3,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from copy import deepcopy
 import math
 import sys
 from argparse import Namespace
@@ -15,18 +14,10 @@ from datasets.utils.continual_dataset import ContinualDataset
 from datasets.utils.gcl_dataset import GCLDataset
 from models.utils.continual_model import ContinualModel
 
-from utils import random_id
-from utils.checkpoints import mammoth_load_checkpoint
 from utils.loggers import *
 from utils.status import ProgressBar
 from utils.feature_forgetting import feature_forgetting, clustering, buffer_forgetting
 from utils.loggers_NC import LoggerNC
-from utils import create_if_not_exists
-
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
 
 def mask_classes(outputs: torch.Tensor, dataset: ContinualDataset, k: int) -> None:
@@ -100,22 +91,6 @@ def evaluate(model: ContinualModel, dataset: ContinualDataset, last=False) -> Tu
     return accs
 
 
-def initialize_wandb(args: Namespace) -> None:
-    """
-    Initializes wandb, if installed.
-
-    Args:
-        args: the arguments of the current execution
-    """
-    assert wandb is not None, "Wandb not installed, please install it or run without wandb"
-    run_name = args.wandb_name if args.wandb_name is not None else args.model
-
-    run_id = random_id(5)
-    name = f'{run_name}_{run_id}'
-    wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=vars(args), name=name)
-    args.wandb_url = wandb.run.get_url()
-
-
 def train(model: ContinualModel, dataset: ContinualDataset,
           args: Namespace) -> None:
     """
@@ -128,12 +103,7 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     """
     print(args)
 
-    if not args.nowand:
-        initialize_wandb(args)
-
-
     model.net.to(model.device)
-    checkpoint_path = f'/cluster/scratch/dammeier/mammoth_checkpoints'
     results = []
 
     dataset_copy = get_dataset(args)
@@ -157,31 +127,19 @@ def train(model: ContinualModel, dataset: ContinualDataset,
     if args.log_NC_metrics:
         logger_NC = LoggerNC(model)
 
-    if args.loadcheck is not None:
-        args.loadcheck = checkpoint_path + f'/{args.ckpt_name}_{args.start_from}.pt'
-        print(args.loadcheck)
-        model, past_res = mammoth_load_checkpoint(args, model)
-
-        print('Checkpoint Loaded!')
-
     progress_bar = ProgressBar(joint=args.joint, verbose=not args.non_verbose)
 
     print(file=sys.stderr)
     end_task = dataset.N_TASKS if args.stop_after is None else args.stop_after
 
-    for t in range(args.start_from):
-        train_loader, test_loader = dataset.get_data_loaders()
-        model.meta_begin_task(dataset)
-    model._current_task = args.start_from
-
     torch.cuda.empty_cache()
 
-    for t in range(args.start_from, end_task):
+    for t in range(end_task):
         model.net.train()
         train_loader, test_loader = dataset.get_data_loaders()
         model.meta_begin_task(dataset)
 
-        if (not args.inference_only) and (not (args.joint and t != end_task-1)) and (t >= args.start_from): #if joint training last task contains all samples
+        if (not args.inference_only) and (not (args.joint and t != end_task-1)): #if joint training last task contains all samples
 
             scheduler = dataset.get_scheduler(model, args) if not hasattr(model, 'scheduler') else model.scheduler
             for epoch in range(model.args.n_epochs):
@@ -237,22 +195,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
                 full_accuracies = feature_forgetting(model, dataset, 'task-il')
                 log_accs(args, feature_forgetting_loggers[1], full_accuracies, t, dataset.SETTING)   
 
-        if args.savecheck:
-            save_obj = {
-                'model': model.state_dict(),
-                'args': args,
-                'results': [results, logger.dump()],
-                'optimizer': model.opt.state_dict() if hasattr(model, 'opt') else None,
-                'scheduler': scheduler.state_dict() if scheduler is not None else None,
-            }
-            if 'buffer_size' in model.args:
-                save_obj['buffer'] = deepcopy(model.buffer).to('cpu')
-
-            # Saving model checkpoint
-            checkpoint_name = checkpoint_path + f'/{args.ckpt_name}_{t}.pt'
-            create_if_not_exists(checkpoint_path)
-            torch.save(save_obj, checkpoint_name)  
-
         model.meta_end_task(dataset)
 
         accs = evaluate(model, dataset)
@@ -275,10 +217,6 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
     if not args.disable_log:
         logger.write(vars(args), 'output')
-        if not args.nowand:
-            d = logger.dump()
-            d['wandb_url'] = wandb.run.get_url()
-            wandb.log(d)
 
     if args.log_feature_forgetting:
         if args.enable_other_metrics:
@@ -292,6 +230,3 @@ def train(model: ContinualModel, dataset: ContinualDataset,
 
     if args.log_NC_metrics:
         logger_NC.write(model)
-
-    if not args.nowand:
-        wandb.finish()

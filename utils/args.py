@@ -3,12 +3,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-if __name__ == '__main__':
-    import os
-    import sys
-    mammoth_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.append(mammoth_path)
-
 from argparse import ArgumentParser
 from datasets import get_dataset_names
 from models import get_all_models
@@ -34,11 +28,6 @@ def add_experiment_args(parser: ArgumentParser) -> None:
                            help='Use class or task incremental training. Please use class-il for domain-il setting')
     parser.add_argument('--model', type=custom_str_underscore, required=True,
                         help='Model name.', choices=list(get_all_models().keys()))
-    parser.add_argument('--backbone', type=str, default="ResNet18_BN", choices=["ResNet18_BN", "ResNet18_LN", "ResNet18_BN_ETF"], required=False,
-                           help='Which backbone to use')
-    parser.add_argument('--chunks', type=int, help='Number of chunks for chunking dataset')
-
-
 
     parser.add_argument('--lr', type=float, required=True,
                         help='Learning rate.')
@@ -66,10 +55,6 @@ def add_experiment_args(parser: ArgumentParser) -> None:
 
     parser.add_argument('--distributed', type=str, default='no', choices=['no', 'dp', 'ddp'],
                         help='Enable distributed training?')
-    parser.add_argument('--savecheck', action='store_true', help='Save checkpoint?')
-    parser.add_argument('--loadcheck', type=str, default=None, help='Path of the checkpoint to load (.pt file for the specific task)')
-    parser.add_argument('--ckpt_name', type=str, required=False, help='(optional) checkpoint save name.')
-    parser.add_argument('--start_from', type=int, default=0, help="Task to start from")
     parser.add_argument('--stop_after', type=int, default=None, help="Task limit")
 
     parser.add_argument('--joint', type=int, choices=[0, 1], default=0,
@@ -96,8 +81,6 @@ def add_management_args(parser: ArgumentParser) -> None:
                         help='The base path where to save datasets, logs, results.')
     parser.add_argument('--notes', type=str, default=None,
                         help='Notes for this run.')
-    parser.add_argument('--wandb_name', type=str, default=None,
-                        help='Wandb name for this run. Overrides the default name (`args.model`).')
 
     parser.add_argument('--non_verbose', default=1, choices=[0, 1], type=int, help='Make progress bars non verbose')
     parser.add_argument('--disable_log', default=0, choices=[0, 1], type=int, help='Disable logging?')
@@ -107,8 +90,6 @@ def add_management_args(parser: ArgumentParser) -> None:
     parser.add_argument('--enable_other_metrics', default=1, choices=[0, 1], type=int,
                         help='Enable computing additional metrics: forward and backward transfer.')
     parser.add_argument('--debug_mode', type=int, default=0, choices=[0, 1], help='Run only a few forward steps per epoch')
-    parser.add_argument('--wandb_entity', type=str, help='Wandb entity')
-    parser.add_argument('--wandb_project', type=str, default='mammoth', help='Wandb project name')
 
     parser.add_argument('--eval_epochs', type=int, default=None,
                         help='Perform inference intra-task at every `eval_epochs`.')
@@ -137,78 +118,3 @@ def add_rehearsal_args(parser: ArgumentParser) -> None:
                         help='The size of the memory buffer.')
     parser.add_argument('--minibatch_size', type=int,
                         help='The batch size of the memory buffer.')
-
-
-class _DocsArgs:
-    """
-    This class is used to generate the documentation of the arguments.
-    """
-
-    def __init__(self, name: str, type_: str, choices: str, default: str, help_: str):
-        self.name = name
-        self.type = type_
-        self.choices = choices
-        self.default = default
-        self.help = help_
-
-    def parse_choices(self) -> str:
-        if self.choices is None:
-            return ''
-        return ', '.join([c.keys() if isinstance(c, dict) else str(c) for c in self.choices])
-
-    def __str__(self):
-        tb = '\t'
-        return f"""**\\-\\-{self.name}** : {self.type}
-            *Help*: {self.help}\n
-            - Default: {self.default}\n
-            - Choices: {self.parse_choices() if self.choices is not None else ''}"""
-
-
-if __name__ == '__main__':
-    print("Generating documentation for the arguments...")
-    os.chdir(mammoth_path)
-    parser = ArgumentParser()
-    add_experiment_args(parser)
-
-    docs_args = []
-    for action in parser._actions:
-        if action.dest == 'help':
-            continue
-        docs_args.append(_DocsArgs(action.dest, action.type, action.choices, action.default, action.help))
-
-    with open('docs/utils/args.rst', 'w') as f:
-        f.write('.. _module-args:\n\n')
-        f.write('Arguments\n')
-        f.write('=========\n\n')
-        f.write('.. rubric:: EXPERIMENT-RELATED ARGS\n\n')
-        for arg in docs_args:
-            f.write(str(arg) + '\n\n')
-
-    parser = ArgumentParser()
-    add_management_args(parser)
-    docs_args = []
-    for action in parser._actions:
-        if action.dest == 'help':
-            continue
-        docs_args.append(_DocsArgs(action.dest, action.type, action.choices, action.default, action.help))
-
-    with open('docs/utils/args.rst', 'a') as f:
-        f.write('.. rubric:: MANAGEMENT ARGS\n\n')
-        for arg in docs_args:
-            f.write(str(arg) + '\n\n')
-
-    parser = ArgumentParser()
-    add_rehearsal_args(parser)
-    docs_args = []
-    for action in parser._actions:
-        if action.dest == 'help':
-            continue
-        docs_args.append(_DocsArgs(action.dest, action.type, action.choices, action.default, action.help))
-
-    with open('docs/utils/args.rst', 'a') as f:
-        f.write('.. rubric:: REEHARSAL-ONLY ARGS\n\n')
-        for arg in docs_args:
-            f.write(str(arg) + '\n\n')
-
-    print("Saving documentation in docs/utils/args.rst")
-    print("Done!")

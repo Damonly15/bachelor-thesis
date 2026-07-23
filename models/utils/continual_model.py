@@ -13,9 +13,7 @@ The `get_optimizer` method returns the optimizer to be used for training. Defaul
 
 The `load_buffer` method is called when a buffer is loaded. Default: do nothing.
 
-The `meta_observe`, `meta_begin_task` and `meta_end_task` methods are wrappers for `observe`, `begin_task` and `end_task` methods, respectively. They take care of updating the internal counters and of logging to wandb if installed.
-
-The `autolog_wandb` method is used to automatically log to wandb all variables starting with "_wandb_" or "loss" in the observe function. It is called by `meta_observe` if wandb is installed. It can be overridden to add custom logging.
+The `meta_observe`, `meta_begin_task` and `meta_end_task` methods are wrappers for `observe`, `begin_task` and `end_task` methods, respectively. They take care of updating the internal counters.
 """
 
 # Copyright 2020-present, Pietro Buzzega, Matteo Boschini, Angelo Porrello, Davide Abati, Simone Calderara.
@@ -24,9 +22,7 @@ The `autolog_wandb` method is used to automatically log to wandb all variables s
 # LICENSE file in the root directory of this source tree.
 
 from abc import abstractmethod
-import sys
 from argparse import ArgumentParser, Namespace
-from contextlib import suppress
 from typing import List
 
 import torch
@@ -35,15 +31,11 @@ import torch.optim as optim
 from datasets import get_dataset
 from datasets.utils.continual_dataset import ContinualDataset
 
-from utils.conf import get_device
+from utils.conf import get_device, base_path
 from utils.kornia_utils import to_kornia_transform
-from utils.magic import persistent_locals
 from torchvision import transforms
 from utils.feature_forgetting import get_features
 from utils import create_if_not_exists
-
-with suppress(ImportError):
-    import wandb
 
 
 class ContinualModel(nn.Module):
@@ -261,7 +253,7 @@ class ContinualModel(nn.Module):
         """
         Wrapper for `observe` method.
 
-        Takes care of dropping unlabeled data if not supported by the model and of logging to wandb if installed.
+        Takes care of dropping unlabeled data if not supported by the model.
 
         Args:
             inputs: batch of inputs
@@ -278,12 +270,7 @@ class ContinualModel(nn.Module):
             if labeled_mask.sum() == 0:
                 return 0
             args = [arg[labeled_mask] if isinstance(arg, torch.Tensor) and arg.shape[0] == args[0].shape[0] else arg for arg in args]
-        if 'wandb' in sys.modules and not self.args.nowand:
-            pl = persistent_locals(self.observe)
-            ret = pl(*args, **kwargs)
-            self.autolog_wandb(pl.locals)
-        else:
-            ret = self.observe(*args, **kwargs)
+        ret = self.observe(*args, **kwargs)
         self.task_iteration += 1
         return ret
 
@@ -322,7 +309,7 @@ class ContinualModel(nn.Module):
         self._current_task = self._current_task + 1
 
     def store_features(self, dataset):
-        if self.NAME in ['er_balanced', 'er_metrics', 'er_test1', 'er_test2', 'er_test3', 'er_test4']:
+        if self.NAME in ['er_balanced', 'er_metrics']:
             versions = ['train_dataset', 'test_dataset', 'buffer']
         else:
             versions = ['train_dataset', 'test_dataset']
@@ -348,7 +335,7 @@ class ContinualModel(nn.Module):
                 self.features[version] = get_features(self, dataset, version, self.current_task)
 
         if (self.args.store_features) and (self.current_task + 1 == dataset.N_TASKS):
-            path = f'/cluster/scratch/dammeier/features/{self.args.dataset}'
+            path = base_path() + f'features/{self.args.dataset}'
             create_if_not_exists(path)
             path = path + f'/bs{self.args.buffer_size}_s{self.args.seed}.pth'
 
@@ -376,16 +363,3 @@ class ContinualModel(nn.Module):
             the value of the loss function
         """
         raise NotImplementedError
-
-    def autolog_wandb(self, locals, extra=None):
-        """
-        All variables starting with "_wandb_" or "loss" in the observe function
-        are automatically logged to wandb upon return if wandb is installed.
-        """
-        if not self.args.nowand and not self.args.debug_mode:
-            tmp = {k: (v.item() if isinstance(v, torch.Tensor) and v.dim() == 0 else v)
-                   for k, v in locals.items() if k.startswith('_wandb_') or 'loss' in k.lower()}
-            tmp.update(extra or {})
-            if hasattr(self, 'opt'):
-                tmp['lr'] = self.opt.param_groups[0]['lr']
-            wandb.log(tmp)

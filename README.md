@@ -1,171 +1,97 @@
-<p align="center">
-  <img width="230" height="230" src="logo.png" alt="logo">
-</p>
+# Heads Collapse, Features Stay: Why Replay Needs Big Buffers
 
-# Mammoth - An Extendible (General) Continual Learning Framework for Pytorch
+Code for the paper *"Heads Collapse, Features Stay: Why Replay Needs Big Buffers"* (Giulia Lanzillotta, Damiano Meier, Thomas Hofmann — ETH Zürich). Paper: https://openreview.net/forum?id=IdW0d0mRnG
 
-Official repository of [Class-Incremental Continual Learning into the eXtended DER-verse](https://arxiv.org/abs/2201.00766) and [Dark Experience for General Continual Learning: a Strong, Simple Baseline](https://papers.nips.cc/paper/2020/hash/b704ea2c39778f07c617f6b7ce480e9e-Abstract.html)
+We distinguish *deep* (feature-space) forgetting from *shallow* (classifier-level) forgetting in continual learning with Experience Replay, and show that small replay buffers are enough to prevent deep forgetting, while preventing shallow forgetting requires much larger buffers. We explain this asymmetry by extending Neural Collapse theory to the continual learning setting, and connect it to out-of-distribution detection.
 
-Mammoth is a framework for continual learning research. It is designed to be modular, easy to extend, and - most importantly - _easy to debug_.
-Idelly, all the code necessary to run the experiments is included _in the repository_, without needing to check out other repositories or install additional packages.
+This codebase is a trimmed-down fork of the [Mammoth](https://github.com/aimagelab/mammoth) continual learning framework, keeping only what was needed to produce the paper's results.
 
-With Mammoth, nothing is set in stone. You can easily add new models, datasets, training strategies, or functionalities.
+## What's here
 
-Join our Discord Server for all your Mammoth-related questions → ![Discord Shield](https://discordapp.com/api/guilds/1164956257392799860/widget.png?style=shield)
-
-## **NEW**: WIKI
-
-We have created a [WIKI](https://aimagelab.github.io/mammoth/)! Check it out for more information on how to use Mammoth.
-
-<p align="center">
-  <img width="112" height="112" src="seq_mnist.gif" alt="Sequential MNIST">
-  <img width="112" height="112" src="seq_cifar10.gif" alt="Sequential CIFAR-10">
-  <img width="112" height="112" src="seq_tinyimg.gif" alt="Sequential TinyImagenet">
-  <img width="112" height="112" src="perm_mnist.gif" alt="Permuted MNIST">
-  <img width="112" height="112" src="rot_mnist.gif" alt="Rotated MNIST">
-  <img width="112" height="112" src="mnist360.gif" alt="MNIST-360">
-</p>
+- **Datasets** (`datasets/`): CIFAR-100, Tiny-ImageNet and CUB-200, each with class-/task-incremental (`seq-*`) and domain-incremental (`inc-*`) variants, plus the pretrained-vs-from-scratch CUB-200 ablation (`seq-cub200-scratch`) and the feature-bottleneck ablation (`*-chunks`).
+- **Backbones** (`backbone/`): ResNet18 (from scratch), ResNet50 and ViT (pretrained on ImageNet).
+- **Methods** (`models/`): `er_balanced` (Experience Replay), `der` (Dark Experience Replay), `fdr` (Function Distance Regularization), `icarl`, and `sgd` (no-replay lower bound / joint upper bound via `--joint`). `er_metrics` is a variant of ER that additionally logs measurements *during* training rather than only at task boundaries.
+- **Metrics**: `utils/feature_forgetting.py` (linear-probe deep/shallow forgetting), `utils/loggers_NC.py` (Neural Collapse metrics).
 
 ## Setup
 
-- Use `./utils/main.py` to run experiments.
-- Use argument `--load_best_args` to use the best hyperparameters from the paper.
-- New models can be added to the `models/` folder.
-- New datasets can be added to the `datasets/` folder.
-
-## Models
-
-- Efficient Lifelong Learning with A-GEM (A-GEM, A-GEM-R - A-GEM with reservoir buffer): `agem`, `agem_r`
-- Bias Correction (BiC): `bic`.
-- Continual Contrastive Interpolation Consistency (CCIC) - _Requires_ `pip install kornia`: `ccic`.
-- CODA-Prompt: COntinual Decomposed Attention-based Prompting for Rehearsal-Free Continual Learning (CODA-Prompt) - _Requires_ `pip install timm==0.9.8`: `coda-prompt`.
-- Dark Experience Replay (DER): `der`.
-- Dark Experience Replay++ (DER++): `derpp`.
-- DualPrompt: Complementary Prompting for Rehearsal-free Continual Learning (DualPrompt) - _Requires_ `pip install timm==0.9.8`: `dualprompt`.
-- Experience Replay (ER): `er`.
-- online Elastic Weight Consolidation (oEWC): `ewc_on`.
-- Function Distance Regularization (FDR): `fdr`.
-- Greedy Sampler and Dumb Learner (GDumb): `gdumb`.
-- Gradient Episodic Memory (GEM) - _Unavailable on windows_: `gem`.
-- Greedy gradient-based Sample Selection (GSS): `gss`.
-- Hindsight Anchor Learning (HAL): `hal`.
-- Incremental Classifier and Representation Learning (iCaRL): `icarl`.
-- JointGCL: `joint_gcl` (only for General Continual).
-- Learning to Prompt (L2P) - _Requires_ `pip install timm==0.9.8`: `l2p`.
-- LiDER (on DER++, iCaRL, GDumb, and ER-ACE): `derpp_lider`, `icarl_lider`, `gdumb_lider`, `er_ace_lider`.
-- Learning a Unified Classifier Incrementally via Rebalancing (LUCIR): `lucir`.
-- Learning without Forgetting (LwF): `lwf`.
-- Meta-Experience Replay (MER): `mer`.
-- Progressive Neural Networks (PNN): `pnn`.
-- Regular Polytope Classifier (RPC): `rpc`.
-- Synaptic Intelligence (SI): `si`.
-- SLCA: Slow Learner with Classifier Alignment for Continual Learning on a Pre-trained Model (SLCA) - _Requires_ `pip install timm==0.9.8`: `slca`.
-- Transfer without Forgetting (TwF): `twf`.
-- eXtended-DER (X-DER): `xder` (full version), `xder_ce` (X-DER with CE), `xder_rpc` (X-DER with RPC).
-
-## Datasets
-
-**NOTE**: Datasets are automatically downloaded in the `data/`.
-
-- This can be changes by changing the `base_path` function in `utils/conf.py`.
-- The `data/` folder is not tracked by git and is craeted automatically if missing.
-
-- Sequential MNIST (_Class-Il / Task-IL_): `seq-mnist`.
-- Sequential CIFAR-10 (_Class-Il / Task-IL_): `seq-cifar10`.
-- Sequential Tiny ImageNet (_Class-Il / Task-IL_): `seq-tinyimg`.
-- Sequential Tiny ImageNet resized 32x32 (_Class-Il / Task-IL_): `seq-tinyimg-r`.
-- Sequential CIFAR-100 (_Class-Il / Task-IL_): `seq-cifar100`.
-- Sequential CIFAR-100 resized 224x224 (ViT version) (_Class-Il / Task-IL_): `seq-cifar100-224`.
-- Sequential CIFAR-100 resized 224x224 (ResNet50 version) (_Class-Il / Task-IL_): `seq-cifar100-224-rs`.
-- Permuted MNIST (_Domain-IL_): `perm-mnist`.
-- Rotated MNIST (_Domain-IL_): `rot-mnist`.
-- MNIST-360 (_General Continual Learning_): `mnist-360`.
-- Sequential CUB-200 (_Class-Il / Task-IL_): `seq-cub200`.
-- Sequential ImageNet-R (_Class-Il / Task-IL_): `seq-imagenet-r`.
-
-## Pretrained backbones
-
-- [ResNet18 on cifar100](https://onedrive.live.com/embed?cid=D3924A2D106E0039&resid=D3924A2D106E0039%21108&authkey=AFsCv4BR-bmTUII)
-- [ResNet18 on TinyImagenet resized (seq-tinyimg-r)](https://onedrive.live.com/embed?cid=D3924A2D106E0039&resid=D3924A2D106E0039%21106&authkey=AKTxp5LFQJ9z9Ok)
-- [ResNet50 on ImageNet (pytorch version)](https://onedrive.live.com/embed?cid=D3924A2D106E0039&resid=D3924A2D106E0039%21107&authkey=ADHhbeg9cUoqJ0M)
-- [ResNet18 on SVHN](https://unimore365-my.sharepoint.com/:u:/g/personal/215580_unimore_it/ETdCpRoA891KsAAuibMKWYwBX_3lfw3dMbE4DFEkhOm96A?e=NjdzLN)
-
-## Citing these works
-
-```
-@article{boschini2022class,
-  title={Class-Incremental Continual Learning into the eXtended DER-verse},
-  author={Boschini, Matteo and Bonicelli, Lorenzo and Buzzega, Pietro and Porrello, Angelo and Calderara, Simone},
-  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
-  year={2022},
-  publisher={IEEE}
-}
-
-@inproceedings{buzzega2020dark,
- author = {Buzzega, Pietro and Boschini, Matteo and Porrello, Angelo and Abati, Davide and Calderara, Simone},
- booktitle = {Advances in Neural Information Processing Systems},
- editor = {H. Larochelle and M. Ranzato and R. Hadsell and M. F. Balcan and H. Lin},
- pages = {15920--15930},
- publisher = {Curran Associates, Inc.},
- title = {Dark Experience for General Continual Learning: a Strong, Simple Baseline},
- volume = {33},
- year = {2020}
-}
+```bash
+pip install torch torchvision kornia scikit-learn pandas timm tqdm setproctitle
 ```
 
-## Awesome Papers using Mammoth
+Datasets are downloaded automatically into `./data/` on first use (override with `--base_path`).
 
-### Our Papers
+## Running a single experiment
 
-- Dark Experience for General Continual Learning: a Strong, Simple Baseline (**NeurIPS 2020**) [[paper](https://arxiv.org/abs/2004.07211)]
-- Rethinking Experience Replay: a Bag of Tricks for Continual Learning (**ICPR 2020**) [[paper](https://arxiv.org/abs/2010.05595)] [[code](https://github.com/hastings24/rethinking_er)]
-- Class-Incremental Continual Learning into the eXtended DER-verse (**TPAMI 2022**) [[paper](https://arxiv.org/abs/2201.00766)]
-- Effects of Auxiliary Knowledge on Continual Learning (**ICPR 2022**) [[paper](https://arxiv.org/abs/2206.02577)]
-- Transfer without Forgetting (**ECCV 2022**) [[paper](https://arxiv.org/abs/2206.00388)][[code](https://github.com/mbosc/twf)]
-- Continual semi-supervised learning through contrastive interpolation consistency (**PRL 2022**) [[paper](https://arxiv.org/abs/2108.06552)][[code](https://github.com/aimagelab/CSSL)]
-- On the Effectiveness of Lipschitz-Driven Rehearsal in Continual Learning (**NeurIPS 2022**) [[paper](https://arxiv.org/abs/2210.06443)] [[code](https://github.com/aimagelab/lider)]
+```bash
+python utils/main.py --dataset=seq-cifar100 --training_setting=class-il \
+    --model=er_balanced --buffer_size=500 --lr=0.1 --seed=1000 \
+    --log_feature_forgetting=1 --log_NC_metrics=1 --permute_classes=1
+```
 
-### Other Awesome CL works using Mammoth
+Run `python utils/main.py --model=<model> --help` to see all options for a given method (dataset, model and lr are always required).
 
-***Get in touch if we missed your awesome work!***
+### Datasets and CL settings
 
-- A Unified and General Framework for Continual Learning (**ICLR2024**) [[paper](https://arxiv.org/pdf/2403.13249.pdf)] [[code](https://github.com/joey-wang123/CL-refresh-learning)]
-- Decoupling Learning and Remembering: a Bilevel Memory Framework with Knowledge Projection for Task-Incremental Learning (**CVPR2023**) [[paper](https://openaccess.thecvf.com/content/CVPR2023/papers/Sun_Decoupling_Learning_and_Remembering_A_Bilevel_Memory_Framework_With_Knowledge_CVPR_2023_paper.pdf)] [[code](https://github.com/SunWenJu123/BMKP)]
-- Regularizing Second-Order Influences for Continual Learning (**CVPR2023**) [[paper](https://openaccess.thecvf.com/content/CVPR2023/papers/Sun_Regularizing_Second-Order_Influences_for_Continual_Learning_CVPR_2023_paper.pdf)] [[code](https://github.com/feifeiobama/InfluenceCL)]
-- Sparse Coding in a Dual Memory System for Lifelong Learning (**CVPR2023**) [[paper](https://arxiv.org/pdf/2301.05058.pdf)] [[code](https://github.com/NeurAI-Lab/SCoMMER)]
-- A Unified Approach to Domain Incremental Learning with Memory: Theory and Algorithm (**CVPR2023**) [[paper](https://arxiv.org/pdf/2310.12244.pdf)] [[code](https://github.com/Wang-ML-Lab/unified-continual-learning)]
-- A Multi-Head Model for Continual Learning via Out-of-Distribution Replay (**CVPR2023**) [[paper](https://arxiv.org/pdf/2208.09734.pdf)] [[code](https://github.com/k-gyuhak/MORE)]
-- Preserving Linear Separability in Continual Learning by Backward Feature Projection (**CVPR2023**) [[paper](https://arxiv.org/pdf/2303.14595.pdf)] [[code](https://github.com/rvl-lab-utoronto/BFP)]
-- Complementary Calibration: Boosting General Continual Learning With Collaborative Distillation and Self-Supervision (**TIP2023**) [[paper](https://ieeexplore.ieee.org/document/10002397)] [[code](https://github.com/lijincm/CoCa)]
-- Continual Learning by Modeling Intra-Class Variation (**TMLR2023**) [[paper](https://arxiv.org/abs/2210.05398)] [[code](https://github.com/yulonghui/MOCA)]
-- ConSlide: Asynchronous Hierarchical Interaction Transformer with Breakup-Reorganize Rehearsal for Continual Whole Slide Image Analysis (**ICCV2023**) [[paper](https://openaccess.thecvf.com/content/ICCV2023/papers/Huang_ConSlide_Asynchronous_Hierarchical_Interaction_Transformer_with_Breakup-Reorganize_Rehearsal_for_Continual_ICCV_2023_paper.pdf)] [[code](https://github.com/HKU-MedAI/ConSlide)]
-- CBA: Improving Online Continual Learning via Continual Bias Adaptor (**ICCV2023**) [[paper](https://arxiv.org/pdf/2308.06925.pdf)] [[code](https://github.com/wqza/CBA-online-CL)]
-- Neuro-Symbolic Continual Learning: Knowledge, Reasoning Shortcuts and Concept Rehearsal (**ICML2023**) [[paper](https://arxiv.org/pdf/2302.01242.pdf)] [[code](https://github.com/ema-marconato/NeSy-CL)]
-- Pretrained Language Model in Continual Learning: a Comparative Study (**ICLR2022**) [[paper](https://openreview.net/pdf?id=figzpGMrdD)] [[code](https://github.com/wutong8023/PLM4CL)]
-- Representational continuity for unsupervised continual learning (**ICLR2022**) [[paper](https://openreview.net/pdf?id=9Hrka5PA7LW)] [[code](https://github.com/divyam3897/UCL)]
-- Continual Normalization: Rethinking Batch Normalization for Online Continual Learning (**ICLR2022**) [[paper](https://arxiv.org/abs/2203.16102)] [[code](https://github.com/phquang/Continual-Normalization)]
-- Learning Fast, Learning Slow: A General Continual Learning Method based on Complementary Learning System (**ICLR2022**) [[paper](https://arxiv.org/pdf/2201.12604.pdf)] [[code](https://github.com/NeurAI-Lab/CLS-ER)]
-- New Insights on Reducing Abrupt Representation Change in Online Continual Learning (**ICLR2022**) [[paper](https://openreview.net/pdf?id=N8MaByOzUfb)] [[code](https://github.com/pclucas14/AML)]
-- Looking Back on Learned Experiences for Class/Task Incremental Learning (**ICLR2022**) [[paper](https://openreview.net/pdf?id=RxplU3vmBx)] [[code](https://github.com/MozhganPourKeshavarz/Cost-Free-Incremental-Learning)]
-- Task Agnostic Representation Consolidation: a Self-supervised based Continual Learning Approach (**CoLLAs2022**) [[paper](https://arxiv.org/pdf/2207.06267.pdf)] [[code](https://github.com/NeurAI-Lab/TARC)]
-- Consistency is the key to further Mitigating Catastrophic Forgetting in Continual Learning (**CoLLAs2022**) [[paper](https://arxiv.org/pdf/2207.04998.pdf)] [[code](https://github.com/NeurAI-Lab/ConsistencyCL)]
-- Self-supervised models are continual learners (**CVPR2022**) [[paper](https://arxiv.org/abs/2112.04215)] [[code](https://github.com/DonkeyShot21/cassle)]
-- Learning from Students: Online Contrastive Distillation Network for General Continual Learning (**IJCAI2022**) [[paper](https://www.ijcai.org/proceedings/2022/0446.pdf)] [[code](https://github.com/lijincm/OCD-Net)]
+The paper studies three continual-learning settings — **class-incremental (CIL)**, **task-incremental (TIL)** and **domain-incremental (DIL)** — combined with three datasets. Which setting you get is a combination of *which dataset* you pick and the `--training_setting` flag:
 
+| Dataset family | Backbone | CIL | TIL | DIL |
+|---|---|---|---|---|
+| CIFAR-100 (32×32) | ResNet18, from scratch | `--dataset=seq-cifar100 --training_setting=class-il` | `--dataset=seq-cifar100 --training_setting=task-il` | `--dataset=inc-cifar100 --training_setting=class-il` |
+| CIFAR-100 (224×224) | ViT, pretrained | `--dataset=seq-cifar100-224 --training_setting=class-il` | `--dataset=seq-cifar100-224 --training_setting=task-il` | `--dataset=inc-cifar100-224 --training_setting=class-il` |
+| Tiny-ImageNet | ResNet18, from scratch | `--dataset=seq-tinyimg --training_setting=class-il` | `--dataset=seq-tinyimg --training_setting=task-il` | `--dataset=inc-tinyimg --training_setting=class-il` |
+| CUB-200 | ResNet50, pretrained | `--dataset=seq-cub200 --training_setting=class-il` | `--dataset=seq-cub200 --training_setting=task-il` | `--dataset=inc-cub200 --training_setting=class-il` |
 
-### Contributing
+Notes:
+- `--training_setting` only takes `class-il`/`task-il` — for a domain-incremental run, pick an `inc-*` dataset *and* leave `--training_setting=class-il` (its default); the code raises an error if you combine an `inc-*` dataset with `task-il`, since DIL and TIL are mutually exclusive by construction.
+- `seq-cub200-scratch` is the same as `seq-cub200` but with a randomly-initialized (non-pretrained) ResNet50, used for the pretrained-vs-from-scratch ablation.
+- `seq-cifar100-chunks` / `inc-cifar100-chunks` is the feature-bottleneck ablation (4 tasks of 25 classes, a ResNet18 with a 10-dimensional bottleneck before the head).
+- The backbone is fixed per dataset (not a CLI flag) — see `get_backbone()` in the corresponding `datasets/*.py` file.
+- `--optimizer` defaults to `sgd`; the paper's ResNet experiments all use `sgd`, while the ViT experiments (`seq-cifar100-224`/`inc-cifar100-224`) use `--optimizer=adamw` with a much lower `--lr` (e.g. `0.0001` vs. `0.03`–`0.1` for SGD runs). See the paper's "Hyper parameters" table for the exact per-dataset/method learning rates and weight decays used.
 
-Pull requests welcome!
+### Methods
 
-Please use `autopep8` with parameters:
+| `--model` | Method | Extra required flags |
+|---|---|---|
+| `sgd` | Fine-tuning baseline (no replay). Add `--joint=1` to instead train jointly on all data seen so far (upper bound). | — |
+| `er_balanced` | Experience Replay, with a class-balanced first batch. | `--buffer_size` |
+| `er_metrics` | Same as `er_balanced`, but additionally logs measurements *during* training (not just at task boundaries) — used to produce the paper's within-task figures. | `--buffer_size` |
+| `der` | Dark Experience Replay (distills past logits from the buffer). | `--buffer_size`, `--alpha` |
+| `fdr` | Function Distance Regularization (matches softmax outputs on buffer samples). | `--buffer_size`, `--alpha` |
+| `icarl` | iCaRL (nearest-class-mean classification + distillation). | `--buffer_size` |
 
-- `--aggressive`
-- `--max-line-length=200`
-- `--ignore=E402`
+### Logging
 
-## Previous versions
+Runs write their results as append-only text files under `data/results/<setting>/<dataset>/<model>/logs.txt` (one Python-dict-repr line per run; `<setting>` is `task-il`, `class-il` or `domain-il` depending on the run). Three additional flags control the paper-specific measurements:
 
-If you're interested in a version of this repo that only includes the original code for [Dark Experience for General Continual Learning: a Strong, Simple Baseline](https://papers.nips.cc/paper/2020/hash/b704ea2c39778f07c617f6b7ce480e9e-Abstract.html) or [Class-Incremental Continual Learning into the eXtended DER-verse](https://arxiv.org/abs/2201.00766>), please use the following tags:
+- `--log_feature_forgetting=1`: fits a linear probe on frozen features after each task to measure *deep* forgetting, alongside the standard (*shallow*) accuracy — see `utils/feature_forgetting.py`. Written with `result_type` `features_cil`/`features_til` in the same results tree.
+- `--log_NC_metrics=1`: computes Neural Collapse metrics (NC1–NC3) on the buffer/train/test features after each task — see `utils/loggers_NC.py`.
+- `--store_features=1`: dumps raw features/labels at the end of training (see `ContinualModel.store_features`).
 
-- [neurips2020](https://github.com/aimagelab/mammoth/releases/tag/neurips2020) for DER (NeurIPS 2020).
-- [tpami2023](https://github.com/aimagelab/mammoth/releases/tag/tpami2023) for X-DER (TPAMI 2022).
+## Launching a grid of experiments (SLURM)
+
+The intended workflow for launching many runs is:
+
+1. **`scripts/prepare_grid.py`** builds a text file of CLI argument combinations (one line per run) by taking the cartesian product of a dict of hyperparameter lists. It currently defines the CIFAR-100 grid used for the paper's buffer-size sweep:
+
+   ```bash
+   python scripts/prepare_grid.py --job_folder=data/jobs/
+   ```
+
+   This writes `data/jobs/list_cifar100.txt` (and `list_all_grid.txt`). Edit the `grid_combinations` list at the top of the script to add further datasets/sweeps.
+
+2. **`scripts/slurm_sbatcher.py`** takes that job list and submits it as a SLURM array job:
+
+   ```bash
+   python scripts/slurm_sbatcher.py --file=data/jobs/list_cifar100.txt --per_job=1 --gpus=1
+   ```
+
+   Useful flags: `--dry` (write the sbatch script without submitting), `--at_a_time` (throttle concurrent array tasks), `--account`/`-A` and `--partition`/`-p` (SLURM account/partition, omitted from the script if not set), `--bashrc` (shell script to source for cluster modules / environment activation, e.g. `module load ...` + `source /path/to/venv/bin/activate`).
+
+   **Note:** `scripts/slurm_sbatcher.py` is cluster-agnostic — it doesn't assume any particular account, partition or environment setup. Pass `--account`, `--partition` and `--bashrc` as needed for your cluster.
+
+For quick local runs without SLURM, `scripts/local_launcher.py` runs a job list sequentially/in parallel on the local machine instead.
+
+## Acknowledgments
+
+This codebase builds on the [Mammoth](https://github.com/aimagelab/mammoth) continual learning framework (Buzzega et al., *Dark Experience for General Continual Learning*, NeurIPS 2020; Boschini et al., *Class-Incremental Continual Learning into the eXtended DER-verse*, TPAMI 2022), which provided the training loop, replay buffer and logging infrastructure this project extends.

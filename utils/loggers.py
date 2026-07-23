@@ -7,8 +7,8 @@
 This module contains the Logger class and related functions for logging accuracy values and other metrics.
 """
 
-from contextlib import suppress
 import sys
+from contextlib import suppress
 from typing import Any, Dict
 import copy
 
@@ -17,15 +17,11 @@ import numpy as np
 from utils import create_if_not_exists, smart_joint
 from utils.conf import base_path
 from utils.metrics import backward_transfer, forward_transfer, forgetting
-with suppress(ImportError):
-    import wandb
 
 
 def log_accs(args, logger, accs, t, setting, epoch=None, prefix="RESULT"):
     """
     Logs the accuracy values and other metrics.
-
-    All metrics are prefixed with `RESULT_` to be logged on wandb.
 
     Args:
         args: The arguments for logging.
@@ -42,19 +38,6 @@ def log_accs(args, logger, accs, t, setting, epoch=None, prefix="RESULT"):
     if not args.disable_log:
         logger.log(mean_acc)
         logger.log_fullacc(accs)
-
-    if not args.nowand:
-        postfix = "" #"" if epoch is None else f"_epoch_{epoch}"
-        if setting == 'general-continual':
-            d2 = {f'{prefix}_domain_mean_accs{postfix}': mean_acc,
-                **{f'{prefix}_domain_acc_{i}{postfix}': a for i, a in enumerate(accs)},
-                'Task': t}
-        else:
-            d2 = {f'{prefix}_class_mean_accs{postfix}': mean_acc,
-                **{f'{prefix}_class_acc_{i}{postfix}': a for i, a in enumerate(accs)},
-                'Task': t}
-
-        wandb.log(d2)
 
 
 def print_mean_accuracy(accs: np.ndarray, task_number: int,

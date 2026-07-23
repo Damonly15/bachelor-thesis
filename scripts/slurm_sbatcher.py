@@ -86,7 +86,8 @@ if __name__ == '__main__':
     all_com_str = "".join([f"' {s} '\n" for s in all_com]).strip()
     filec = f"""#!/bin/bash
 
-#SBATCH -A es_ilic
+{f"#SBATCH -A {args.account}" if args.account is not None else ""}
+{f"#SBATCH -p {args.partition}" if args.partition is not None else ""}
 #SBATCH --job-name={args.name}
 #SBATCH --time={args.timelimit}
 #SBATCH -n 1
@@ -101,19 +102,7 @@ if __name__ == '__main__':
 #SBATCH --array=0-{len_com-1}%{(len_com if args.at_a_time <= 0 else args.at_a_time)}
 {exclusion}
 
-{f"source {args.bashrc}" if args.bashrc is not None else ""}
-
-
-module purge
-module load stack/2024-05
-module load eth_proxy
-module load git/2.42.0
-module load cuda/12.2.1
-module load python/3.10.13_cuda
-module load cudnn/9.2.0
-
-
-source ~/virtual_environments/mammoth-bachelorthesis_env/bin/activate
+{f"source {args.bashrc}" if args.bashrc is not None else "# Pass --bashrc=/path/to/setup.sh to load cluster modules / activate your environment here."}
 
 
 args=(

@@ -17,7 +17,6 @@ To run the script, execute it directly or import it as a module and call the `ma
 
 # needed (don't change it)
 import numpy  # noqa
-import time
 import importlib
 import os
 import socket
@@ -37,7 +36,6 @@ from utils import create_if_not_exists, custom_str_underscore
 from utils.args import add_management_args, add_experiment_args
 from utils.conf import base_path
 from utils.distributed import make_dp
-from utils.best_args import best_args
 from utils.conf import set_random_seed
 
 
@@ -61,9 +59,6 @@ def parse_args():
 
     parser = ArgumentParser(description='mammoth', allow_abbrev=False, add_help=False)
     parser.add_argument('--model', type=custom_str_underscore, help='Model name.', choices=list(get_all_models().keys()))
-    parser.add_argument('--load_best_args', action='store_true',
-                        help='Loads the best arguments for each method, '
-                             'dataset and memory buffer.')
 
     args = parser.parse_known_args()[0]
     models_dict = get_all_models()
@@ -72,38 +67,10 @@ def parse_args():
         print('Available models are: {}'.format(list(models_dict.keys())))
         sys.exit(1)
 
-    mod = importlib.import_module('models.' + models_dict[args.model])
-
-    if args.load_best_args:
-        parser.add_argument('--dataset', type=str, required=True,
-                            choices=get_dataset_names(),
-                            help='Which dataset to perform experiments on.')
-        if hasattr(mod, 'Buffer'):
-            parser.add_argument('--buffer_size', type=int, required=True,
-                                help='The size of the memory buffer.')
-        args = parser.parse_args()
-        if args.model == 'joint':
-            best = best_args[args.dataset]['sgd']
-        else:
-            best = best_args[args.dataset][args.model]
-        if hasattr(mod, 'Buffer'):
-            best = best[args.buffer_size]
-        else:
-            best = best[-1]
-
-        parser = get_model_class(args).get_parser()
-        add_management_args(parser)
-        add_experiment_args(parser)
-        to_parse = sys.argv[1:] + ['--' + k + '=' + str(v) for k, v in best.items()]
-        to_parse.remove('--load_best_args')
-        args = parser.parse_args(to_parse)
-        if args.model == 'joint' and args.dataset == 'mnist-360':
-            args.model = 'joint_gcl'
-    else:
-        parser = get_model_class(args).get_parser()
-        add_management_args(parser)
-        add_experiment_args(parser)
-        args = parser.parse_args()
+    parser = get_model_class(args).get_parser()
+    add_management_args(parser)
+    add_experiment_args(parser)
+    args = parser.parse_args()
 
     tmp_dset_class = get_dataset_class(args)
     n_epochs = tmp_dset_class.get_epochs()
@@ -122,15 +89,6 @@ def parse_args():
 
     if args.seed is not None:
         set_random_seed(args.seed)
-
-    if args.savecheck or args.loadcheck:
-        assert args.inference_only == 0, "Should not save checkpoint in inference only mode"
-
-        now = time.strftime("%Y%m%d-%H%M%S")
-        extra_ckpt_name = "" if args.ckpt_name is None else f"{args.ckpt_name}_"
-        args.ckpt_name = f"{extra_ckpt_name}_{args.dataset}_{args.training_setting}_{args.model}_{args.buffer_size if hasattr(args, 'buffer_size') else 0}_{args.seed}"
-        print("Saving checkpoint into", args.ckpt_name, file=sys.stderr)
-
 
     assert 0 < args.label_perc <= 1, "label_perc must be in (0, 1]"
 
@@ -182,15 +140,7 @@ def main(args=None):
         raise NotImplementedError('Distributed Data Parallel not supported yet.')
 
     if args.debug_mode:
-        print('Debug mode enabled: running only a few forward steps per epoch with W&B disabled.')
-        args.nowand = 1
-
-    if args.wandb_entity is None or args.wandb_project is None:
-        print('Warning: wandb_entity and wandb_project not set. Disabling wandb.')
-        args.nowand = 1
-    else:
-        print('Logging to wandb: {}/{}'.format(args.wandb_entity, args.wandb_project))
-        args.nowand = 0
+        print('Debug mode enabled: running only a few forward steps per epoch.')
 
     try:
         import setproctitle

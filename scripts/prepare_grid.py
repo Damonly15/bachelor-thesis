@@ -10,20 +10,20 @@ args = parser.parse_args()
 
 grid_combinations = [
     {
-        'name':'cifar100_other',
+        'name':'cifar100',
         'combos': {
-            "dataset": ['seq-cifar100', 'inc-cifar100'],
-            "training_setting": ['class-il', 'task-il'],
-            "optim_wd": [0.00001],
-            "model": ['icarl'],
+            "dataset": ['seq-cifar100'],
+            "training_setting": ['class-il'],
+            "optim_wd": [0.0001],
+            "model": ['er_balanced'],
             "buffer_size": [0, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 50000],
             "lr": [0.1],
             #"alpha": [0.3],
             #"beta": [2],
             "seed": [1000, 2000, 3000],
             #"enable_other_metrics" : [1],
-            #"log_feature_forgetting": [1],
-            #"log_NC_metrics": [1],
+            "log_feature_forgetting": [1],
+            "log_NC_metrics": [1],
             #"n_epochs": [10],
             #"backbone": ["ResNet18_LN"],
             #"optimizer": ["adamw"],
